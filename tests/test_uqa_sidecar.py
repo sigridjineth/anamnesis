@@ -176,6 +176,34 @@ class UQASidecarTests(unittest.TestCase):
         self.assertEqual(delegation["sessions"][0]["session_id"], "ses-1")
         self.assertTrue(delegation["sessions"][0]["steps"])
 
+    def test_common_queries_fall_back_to_raw_store_when_sidecar_is_stale(self) -> None:
+        hits = self.sidecar.search("curl install script", limit=5, project_id="/repo/app")
+        self.assertTrue(hits)
+        self.assertEqual(hits[0]["project_id"], "/repo/app")
+
+        digest = self.sidecar.digest(days=5000, project_id="/repo/app")
+        self.assertEqual(len(digest["sessions"]), 2)
+        self.assertTrue(any(row["path"] == "scripts/install.sh" for row in digest["top_files"]))
+        self.assertEqual(digest["uqa"]["mode"], "raw-fallback")
+
+        decision = self.sidecar.trace_decision("curl install script", limit=5, project_id="/repo/app")
+        self.assertTrue(decision["sessions"])
+        self.assertEqual(decision["sessions"][0]["session_id"], "ses-1")
+        self.assertGreaterEqual(decision["sessions"][0]["event_count"], 4)
+
+        story = self.sidecar.story(session_id="ses-1", limit=10, project_id="/repo/app")
+        self.assertEqual(story["session"]["session_id"], "ses-1")
+        self.assertTrue(story["timeline"])
+
+        file_trace = self.sidecar.trace_file("scripts/install.sh", limit=10, project_id="/repo/app")
+        self.assertEqual(file_trace["canonical_path"], "scripts/install.sh")
+        self.assertTrue(file_trace["touches"])
+        self.assertTrue(any(row["path"] == "scripts/install.sh" for row in file_trace["files"]))
+
+        delegation = self.sidecar.delegation_tree(session_id="ses-1", limit=10, project_id="/repo/app")
+        self.assertTrue(delegation["sessions"])
+        self.assertEqual(delegation["uqa"]["mode"], "raw-fallback")
+
     def test_project_scoped_queries_keep_same_paths_separate_across_repos(self) -> None:
         self.store.append_events(
             [

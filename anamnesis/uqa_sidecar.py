@@ -362,12 +362,18 @@ class UQASidecar:
         project_id: str | None = None,
         entity_types: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        if self._is_stale():
+            return self._raw_search(query, limit=limit, project_id=project_id, entity_types=entity_types)
         return self._hybrid_search(query, limit=limit, project_id=project_id, entity_types=entity_types)
 
     def file_search(self, query: str, *, limit: int = 10, project_id: str | None = None) -> list[dict[str, Any]]:
+        if self._is_stale():
+            return self._raw_file_search(query, limit=limit, project_id=project_id)
         return self._hybrid_search(query, limit=limit, project_id=project_id, entity_types=["file"])
 
     def trace_file(self, path: str, *, limit: int = 20, project_id: str | None = None) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_trace_file(path, limit=limit, project_id=project_id)
         self.ensure_ready()
         canonical = _normalize_path(path)
         file_alias_filter = f" AND project_id = {_quote(project_id)}" if project_id else ""
@@ -522,6 +528,8 @@ class UQASidecar:
         }
 
     def trace_decision(self, query: str, *, limit: int = 10, project_id: str | None = None) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_trace_decision(query, limit=limit, project_id=project_id)
         self.ensure_ready()
         query_vector = hash_embedding(query, dimensions=EMBEDDING_DIMENSIONS)
         search_limit = max(limit * 12, 80)
@@ -619,6 +627,8 @@ class UQASidecar:
         return {"query": query, "project_id": project_id, "sessions": sessions}
 
     def digest(self, *, days: int = 7, project_id: str | None = None) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_digest(days=days, project_id=project_id)
         self.ensure_ready()
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
         project_filter = f" AND project_id = {_quote(project_id)}" if project_id else ""
@@ -648,6 +658,14 @@ class UQASidecar:
         context_hops: int = 2,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_story(
+                query=query,
+                session_id=session_id,
+                limit=limit,
+                context_hops=context_hops,
+                project_id=project_id,
+            )
         self.ensure_ready()
         if not session_id and query:
             decision = self.trace_decision(query, limit=1, project_id=project_id)
@@ -694,6 +712,8 @@ class UQASidecar:
         }
 
     def sprints(self, *, days: int = 14, project_id: str | None = None, gap_hours: int = 4) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_sprints(days=days, project_id=project_id, gap_hours=gap_hours)
         self.ensure_ready()
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
         cutoff_epoch = _ts_epoch(cutoff)
@@ -770,6 +790,17 @@ class UQASidecar:
         return {"days": days, "gap_hours": gap_hours, "project_id": project_id, "sprints": sprints}
 
     def genealogy(self, query: str, *, limit: int = 20, project_id: str | None = None) -> dict[str, Any]:
+        if self._is_stale():
+            timeline = list(
+                self._raw_search(
+                    query,
+                    limit=max(limit * 2, 20),
+                    project_id=project_id,
+                    entity_types=["event", "file", "session"],
+                )
+            )
+            timeline.sort(key=lambda row: (str(row.get("ts") or "9999"), -float(row.get("score") or 0.0)))
+            return self._with_pending_hint({"query": query, "project_id": project_id, "timeline": timeline[:limit]})
         self.ensure_ready()
         timeline = list(
             self.search(
@@ -790,6 +821,8 @@ class UQASidecar:
         limit: int = 10,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_bridges(query, query_b, limit=limit, project_id=project_id)
         if query_b:
             hits_a = self.search(
                 query,
@@ -914,6 +947,8 @@ class UQASidecar:
         limit: int = 50,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._is_stale():
+            return self._raw_delegation_tree(session_id=session_id, query=query, limit=limit, project_id=project_id)
         self.ensure_ready()
         if not session_id and query:
             decision = self.trace_decision(query, limit=1, project_id=project_id)
@@ -1101,6 +1136,1025 @@ class UQASidecar:
         with self.engine() as engine:
             rows = self._rows(engine, sql)
         return {"columns": list(rows[0].keys()) if rows else [], "rows": rows}
+
+    def _raw_search(
+        self,
+        query: str,
+        *,
+        limit: int,
+        project_id: str | None = None,
+        entity_types: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self.raw_db_path.exists():
+            return []
+        terms = _query_terms(query)
+        if not terms:
+            return []
+        allowed = set(entity_types or [])
+        like_params = [f"%{term}%" for term in terms]
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            filters = []
+            params: list[Any] = []
+            if project_id:
+                filters.append("e.project_id = ?")
+                params.append(project_id)
+            match_columns = [
+                "LOWER(COALESCE(e.content, ''))",
+                "LOWER(COALESCE(e.target_path, ''))",
+                "LOWER(COALESCE(e.tool_name, ''))",
+                "LOWER(COALESCE(e.kind, ''))",
+                "LOWER(COALESCE(e.session_id, ''))",
+                "LOWER(COALESCE(e.project_id, ''))",
+            ]
+            term_clauses = []
+            for column in match_columns:
+                for like in like_params:
+                    term_clauses.append(f"{column} LIKE ?")
+                    params.append(like)
+            filters.append("(" + " OR ".join(term_clauses) + ")")
+            where = " AND ".join(filters)
+            event_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT e.id AS event_id, e.session_id, e.project_id, e.ts, e.kind, e.role, "
+                    "SUBSTR(e.content, 1, 2000) AS content, e.tool_name, e.target_path "
+                    "FROM events e "
+                    f"WHERE {where} "
+                    "ORDER BY e.ts DESC LIMIT ?",
+                    (*params, max(limit * 25, 200)),
+                ).fetchall()
+            ]
+
+            session_filters = []
+            session_params: list[Any] = []
+            if project_id:
+                session_filters.append("e.project_id = ?")
+                session_params.append(project_id)
+            session_term_clauses = []
+            for column in match_columns:
+                for like in like_params:
+                    session_term_clauses.append(f"{column} LIKE ?")
+                    session_params.append(like)
+            session_filters.append("(" + " OR ".join(session_term_clauses) + ")")
+            session_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT s.session_id, s.agent, s.project_id, s.started_at, s.ended_at, "
+                    "COUNT(DISTINCT e.id) AS event_count, MAX(e.ts) AS ts "
+                    "FROM sessions s "
+                    "JOIN events e ON e.session_id = s.session_id "
+                    f"WHERE {' AND '.join(session_filters)} "
+                    "GROUP BY s.session_id, s.agent, s.project_id, s.started_at, s.ended_at "
+                    "ORDER BY ts DESC LIMIT ?",
+                    (*session_params, max(limit * 8, 50)),
+                ).fetchall()
+            ]
+
+            file_filters = []
+            file_params: list[Any] = []
+            if project_id:
+                file_filters.append("e.project_id = ?")
+                file_params.append(project_id)
+            file_term_clauses = []
+            file_columns = [
+                "LOWER(COALESCE(ft.path, ''))",
+                "LOWER(COALESCE(e.content, ''))",
+                "LOWER(COALESCE(e.target_path, ''))",
+            ]
+            for column in file_columns:
+                for like in like_params:
+                    file_term_clauses.append(f"{column} LIKE ?")
+                    file_params.append(like)
+            file_filters.append("(" + " OR ".join(file_term_clauses) + ")")
+            file_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT e.project_id, e.session_id, MAX(e.ts) AS ts, ft.path, COUNT(*) AS touches "
+                    "FROM file_touches ft "
+                    "JOIN events e ON e.id = ft.event_id "
+                    f"WHERE {' AND '.join(file_filters)} "
+                    "GROUP BY e.project_id, e.session_id, ft.path "
+                    "ORDER BY ts DESC LIMIT ?",
+                    (*file_params, max(limit * 8, 50)),
+                ).fetchall()
+            ]
+        hits: list[dict[str, Any]] = []
+        if not allowed or "event" in allowed:
+            for row in event_rows:
+                score = _raw_text_score(
+                    query,
+                    row.get("content"),
+                    row.get("target_path"),
+                    row.get("tool_name"),
+                    row.get("kind"),
+                )
+                hits.append(
+                    {
+                        "id": row.get("event_id"),
+                        "doc_id": None,
+                        "entity_type": "event",
+                        "session_id": row.get("session_id"),
+                        "project_id": row.get("project_id"),
+                        "ts": row.get("ts"),
+                        "kind": row.get("kind"),
+                        "title": _short_text(row.get("content"), limit=120) or row.get("tool_name") or row.get("kind"),
+                        "content": row.get("content"),
+                        "target_path": row.get("target_path"),
+                        "score": score,
+                    }
+                )
+        if not allowed or "session" in allowed:
+            excerpts = self._raw_session_excerpts(query, session_rows, project_id=project_id)
+            for row in session_rows:
+                session_key = (str(row.get("project_id") or "default-project"), str(row.get("session_id") or ""))
+                excerpt = excerpts.get(session_key)
+                score = _raw_text_score(query, excerpt, row.get("session_id"), row.get("agent"))
+                hits.append(
+                    {
+                        "id": row.get("session_id"),
+                        "doc_id": None,
+                        "entity_type": "session",
+                        "session_id": row.get("session_id"),
+                        "project_id": row.get("project_id"),
+                        "ts": row.get("ts") or row.get("ended_at") or row.get("started_at"),
+                        "kind": "session",
+                        "title": f"{row.get('agent') or 'agent'} session {row.get('session_id')}",
+                        "content": excerpt,
+                        "target_path": None,
+                        "score": score + min(float(row.get("event_count") or 0), 25.0) * 0.02,
+                    }
+                )
+        if not allowed or "file" in allowed:
+            for row in file_rows:
+                score = _raw_text_score(query, row.get("path"))
+                hits.append(
+                    {
+                        "id": f"{row.get('project_id')}:{row.get('path')}",
+                        "doc_id": None,
+                        "entity_type": "file",
+                        "session_id": row.get("session_id"),
+                        "project_id": row.get("project_id"),
+                        "ts": row.get("ts"),
+                        "kind": "file",
+                        "title": row.get("path"),
+                        "content": f"Touched {row.get('touches')} time(s)",
+                        "target_path": row.get("path"),
+                        "score": score + min(float(row.get("touches") or 0), 25.0) * 0.05,
+                    }
+                )
+        hits.sort(key=lambda row: (-float(row.get("score") or 0.0), str(row.get("ts") or ""), str(row.get("id") or "")))
+        return hits[:limit]
+
+    def _raw_file_search(self, query: str, *, limit: int, project_id: str | None = None) -> list[dict[str, Any]]:
+        return self._raw_search(query, limit=limit, project_id=project_id, entity_types=["file"])
+
+    def _raw_trace_file(self, path: str, *, limit: int = 20, project_id: str | None = None) -> dict[str, Any]:
+        canonical = _normalize_path(path)
+        basename = canonical.rsplit("/", 1)[-1]
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            touch_where = [
+                "(ft.path = ? OR ft.path = ? OR ft.path LIKE ?)",
+            ]
+            touch_params: list[Any] = [path, canonical, f"%/{basename}"]
+            if project_id:
+                touch_where.append("e.project_id = ?")
+                touch_params.append(project_id)
+            touch_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT e.id AS event_id, e.project_id, e.session_id, e.ts, e.kind, e.content, e.tool_name, "
+                    "ft.path, ft.operation "
+                    "FROM file_touches ft JOIN events e ON e.id = ft.event_id "
+                    f"WHERE {' AND '.join(touch_where)} "
+                    "ORDER BY e.ts DESC",
+                    tuple(touch_params),
+                ).fetchall()
+                if _normalize_path(row["path"]) == canonical
+            ]
+            project_filters = []
+            project_params: list[Any] = []
+            if project_id:
+                project_filters.append("project_id = ?")
+                project_params.append(project_id)
+            event_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT id, session_id, project_id, ts, kind, role, content, tool_name, target_path, payload_json "
+                    "FROM events "
+                    + ("WHERE " + " AND ".join(project_filters) if project_filters else "")
+                    + " ORDER BY ts DESC",
+                    tuple(project_params),
+                ).fetchall()
+            ]
+        alias_meta: dict[tuple[str, str], dict[str, Any]] = {}
+        file_rows_by_project: dict[str, dict[str, Any]] = {}
+        for row in touch_rows:
+            row_project = str(row.get("project_id") or "default-project")
+            meta = alias_meta.setdefault(
+                (row_project, canonical),
+                _empty_path_meta(project_id=row_project, canonical_path=canonical),
+            )
+            _record_path_observation(
+                meta,
+                path=str(row.get("path") or canonical),
+                operation=str(row.get("operation") or "touch"),
+                session_id=str(row.get("session_id") or ""),
+                ts=row.get("ts"),
+                content=row.get("content"),
+            )
+        lineage: list[dict[str, Any]] = []
+        for row in event_rows:
+            payload = _json_object(row.get("payload_json"))
+            for hint in _extract_lineage_hints(row, payload):
+                if project_id and str(hint.get("project_id") or "") != project_id:
+                    continue
+                source_canonical = str(hint.get("source_canonical_path") or "")
+                target_canonical = str(hint.get("target_canonical_path") or "")
+                if canonical not in {source_canonical, target_canonical}:
+                    continue
+                row_project = str(hint.get("project_id") or "default-project")
+                meta = alias_meta.setdefault(
+                    (row_project, canonical),
+                    _empty_path_meta(project_id=row_project, canonical_path=canonical),
+                )
+                if source_canonical == canonical:
+                    _record_path_observation(
+                        meta,
+                        path=str(hint.get("source_path") or canonical),
+                        operation=str(hint.get("relation") or "rename"),
+                        session_id=str(hint.get("session_id") or ""),
+                        ts=hint.get("ts"),
+                        content=hint.get("evidence"),
+                    )
+                    _record_path_observation(
+                        meta,
+                        path=str(hint.get("target_path") or canonical),
+                        operation=str(hint.get("relation") or "rename"),
+                        session_id=str(hint.get("session_id") or ""),
+                        ts=hint.get("ts"),
+                        content=hint.get("evidence"),
+                    )
+                    shaped = {
+                        **hint,
+                        "match_role": "source",
+                        "counterpart_path": hint.get("target_path"),
+                        "counterpart_canonical_path": hint.get("target_canonical_path"),
+                    }
+                else:
+                    _record_path_observation(
+                        meta,
+                        path=str(hint.get("source_path") or canonical),
+                        operation=str(hint.get("relation") or "rename"),
+                        session_id=str(hint.get("session_id") or ""),
+                        ts=hint.get("ts"),
+                        content=hint.get("evidence"),
+                    )
+                    _record_path_observation(
+                        meta,
+                        path=str(hint.get("target_path") or canonical),
+                        operation=str(hint.get("relation") or "rename"),
+                        session_id=str(hint.get("session_id") or ""),
+                        ts=hint.get("ts"),
+                        content=hint.get("evidence"),
+                    )
+                    shaped = {
+                        **hint,
+                        "match_role": "target",
+                        "counterpart_path": hint.get("source_path"),
+                        "counterpart_canonical_path": hint.get("source_canonical_path"),
+                    }
+                lineage.append(shaped)
+        target_sessions = {
+            (str(row.get("project_id") or "default-project"), str(row.get("session_id") or ""))
+            for row in touch_rows
+            if row.get("session_id")
+        }
+        related_stats: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in event_rows:
+            session_key = (str(row.get("project_id") or "default-project"), str(row.get("session_id") or ""))
+            if session_key not in target_sessions:
+                continue
+            payload = _json_object(row.get("payload_json"))
+            touches = payload.get("file_touches")
+            if not isinstance(touches, list):
+                touches = []
+            for raw_touch in touches:
+                if isinstance(raw_touch, str):
+                    touch_path = raw_touch
+                elif isinstance(raw_touch, dict):
+                    touch_path = raw_touch.get("path")
+                else:
+                    touch_path = None
+                normalized = _normalize_path(str(touch_path or ""))
+                if not normalized or normalized == canonical:
+                    continue
+                key = (session_key[0], normalized)
+                stat = related_stats.setdefault(
+                    key,
+                    {
+                        "project_id": session_key[0],
+                        "path": touch_path,
+                        "canonical_path": normalized,
+                        "touches": 0,
+                        "last_seen_at": None,
+                    },
+                )
+                stat["touches"] += 1
+                ts = row.get("ts")
+                if ts and (stat["last_seen_at"] is None or str(ts) > str(stat["last_seen_at"])):
+                    stat["last_seen_at"] = ts
+
+        files: list[dict[str, Any]] = []
+        aliases: list[dict[str, Any]] = []
+        for (row_project, row_canonical), meta in alias_meta.items():
+            if row_canonical != canonical:
+                continue
+            alias_map = meta.get("aliases", {})
+            if not alias_map:
+                continue
+            primary_path = _best_alias_path(alias_map, newest=False) or canonical
+            current_path = _best_alias_path(alias_map, newest=True) or primary_path
+            operations = [str(op) for op in meta.get("operations", []) if str(op)]
+            rename_count = sum(1 for op in operations if op in {"rename", "move", "git_mv", "copy"})
+            file_row = {
+                "doc_id": None,
+                "file_id": _sha1_text(f"{row_project}:{row_canonical}"),
+                "path": current_path,
+                "current_path": current_path,
+                "primary_path": primary_path,
+                "canonical_path": row_canonical,
+                "project_id": row_project,
+                "basename": current_path.rsplit("/", 1)[-1],
+                "extension": current_path.rsplit(".", 1)[-1] if "." in current_path.rsplit("/", 1)[-1] else "",
+                "alias_count": len(alias_map),
+                "rename_count": rename_count,
+                "touch_count": len([row for row in touch_rows if str(row.get("project_id") or "default-project") == row_project]),
+                "session_count": len(meta.get("session_ids", set())),
+                "first_seen_ts": meta.get("first_seen_ts"),
+                "last_seen_ts": meta.get("last_seen_ts"),
+                "latest_operation": operations[-1] if operations else None,
+            }
+            file_rows_by_project[row_project] = file_row
+            files.append(file_row)
+            for alias_path, info in sorted(alias_map.items()):
+                aliases.append(
+                    {
+                        "project_id": row_project,
+                        "path": alias_path,
+                        "canonical_path": row_canonical,
+                        "is_primary": 1 if alias_path == primary_path else 0,
+                        "first_seen_ts": info.get("first_seen_ts"),
+                        "last_seen_ts": info.get("last_seen_ts"),
+                    }
+                )
+
+        touches = [
+            {
+                "project_id": row.get("project_id"),
+                "session_id": row.get("session_id"),
+                "ts": row.get("ts"),
+                "kind": row.get("kind"),
+                "path": row.get("path"),
+                "operation": row.get("operation"),
+                "content": row.get("content"),
+                "tool_name": row.get("tool_name"),
+                "session_summary": None,
+            }
+            for row in touch_rows[:limit]
+        ]
+        related_files = sorted(
+            related_stats.values(),
+            key=lambda row: (int(row.get("touches") or 0), str(row.get("last_seen_at") or "")),
+            reverse=True,
+        )[:20]
+        return self._with_pending_hint(
+            {
+                "path": path,
+                "canonical_path": canonical,
+                "project_id": project_id,
+                "files": files,
+                "aliases": sorted(aliases, key=lambda row: (-int(row.get("is_primary") or 0), str(row.get("path") or ""))),
+                "lineage": lineage[:50],
+                "touches": touches,
+                "related_files": related_files,
+            }
+        )
+
+    def _raw_trace_decision(self, query: str, *, limit: int = 10, project_id: str | None = None) -> dict[str, Any]:
+        hits = self._raw_search(
+            query,
+            limit=max(limit * 20, 100),
+            project_id=project_id,
+            entity_types=["event", "session"],
+        )
+        sessions: dict[tuple[str, str], dict[str, Any]] = {}
+        for hit in hits:
+            session_id = str(hit.get("session_id") or "")
+            hit_project_id = str(hit.get("project_id") or "default-project")
+            if not session_id:
+                continue
+            key = (hit_project_id, session_id)
+            record = sessions.setdefault(
+                key,
+                {
+                    "session_id": session_id,
+                    "project_id": hit_project_id,
+                    "first_seen_at": hit.get("ts"),
+                    "last_seen_at": hit.get("ts"),
+                        "event_count": 0,
+                        "excerpt": _short_text(hit.get("content") or hit.get("title"), limit=320),
+                        "_score": float(hit.get("score") or 0.0),
+                    },
+                )
+            record["event_count"] += 1
+            ts = str(hit.get("ts") or "")
+            if ts and (record["first_seen_at"] is None or ts < str(record["first_seen_at"])):
+                record["first_seen_at"] = ts
+            if ts and (record["last_seen_at"] is None or ts > str(record["last_seen_at"])):
+                record["last_seen_at"] = ts
+            score = float(hit.get("score") or 0.0)
+            if score >= float(record.get("_score") or 0.0):
+                record["_score"] = score
+                record["excerpt"] = _short_text(hit.get("content") or hit.get("title"), limit=320)
+        if sessions:
+            with closing(sqlite3.connect(self.raw_db_path)) as db:
+                for record in sessions.values():
+                    row = db.execute(
+                        "SELECT COUNT(*) FROM events WHERE session_id = ? AND project_id = ?",
+                        (record["session_id"], record["project_id"]),
+                    ).fetchone()
+                    if row:
+                        record["event_count"] = int(row[0])
+        ranked = sorted(
+            sessions.values(),
+            key=lambda row: (
+                -float(row.get("_score") or 0.0),
+                -int(row.get("event_count") or 0),
+                str(row.get("last_seen_at") or ""),
+                str(row.get("project_id") or ""),
+            ),
+        )[:limit]
+        for row in ranked:
+            row.pop("_score", None)
+        return self._with_pending_hint({"query": query, "project_id": project_id, "sessions": ranked})
+
+    def _raw_digest(self, *, days: int = 7, project_id: str | None = None) -> dict[str, Any]:
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            filters = ["COALESCE(s.ended_at, s.started_at) >= ?"]
+            params: list[Any] = [cutoff]
+            if project_id:
+                filters.append("s.project_id = ?")
+                params.append(project_id)
+            session_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT s.session_id, s.agent, s.project_id, s.started_at, s.ended_at, "
+                    "COUNT(DISTINCT e.id) AS event_count, COUNT(ft.path) AS file_touch_count, "
+                    "MAX(CASE WHEN COALESCE(e.content, '') <> '' THEN e.content END) AS summary "
+                    "FROM sessions s "
+                    "LEFT JOIN events e ON e.session_id = s.session_id "
+                    "LEFT JOIN file_touches ft ON ft.event_id = e.id "
+                    f"WHERE {' AND '.join(filters)} "
+                    "GROUP BY s.session_id, s.agent, s.project_id, s.started_at, s.ended_at "
+                    "ORDER BY COALESCE(s.ended_at, s.started_at) DESC, s.started_at DESC",
+                    tuple(params),
+                ).fetchall()
+            ]
+            top_file_filters = ["e.ts >= ?"]
+            top_file_params: list[Any] = [cutoff]
+            if project_id:
+                top_file_filters.append("e.project_id = ?")
+                top_file_params.append(project_id)
+            top_file_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT e.project_id, ft.path, COUNT(*) AS touches, MAX(e.ts) AS last_seen_at "
+                    "FROM file_touches ft "
+                    "JOIN events e ON e.id = ft.event_id "
+                    f"WHERE {' AND '.join(top_file_filters)} "
+                    "GROUP BY e.project_id, ft.path "
+                    "ORDER BY touches DESC, last_seen_at DESC LIMIT 10",
+                    tuple(top_file_params),
+                ).fetchall()
+            ]
+        sessions = [
+            {
+                "session_id": row.get("session_id"),
+                "agent": row.get("agent"),
+                "project_id": row.get("project_id"),
+                "event_count": row.get("event_count"),
+                "file_touch_count": row.get("file_touch_count"),
+                "started_at": row.get("started_at"),
+                "ended_at": row.get("ended_at"),
+                "summary": _short_text(row.get("summary"), limit=240),
+            }
+            for row in session_rows
+        ]
+        top_files = [
+            {
+                "project_id": row.get("project_id"),
+                "path": row.get("path"),
+                "canonical_path": _normalize_path(row.get("path")),
+                "touches": row.get("touches"),
+                "last_seen_at": row.get("last_seen_at"),
+            }
+            for row in top_file_rows
+        ]
+        return self._with_pending_hint(
+            {"days": days, "since": cutoff, "project_id": project_id, "sessions": sessions, "top_files": top_files}
+        )
+
+    def _raw_story(
+        self,
+        query: str | None = None,
+        *,
+        session_id: str | None = None,
+        limit: int = 50,
+        context_hops: int = 2,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_project_id = project_id
+        if not session_id and query:
+            decision = self._raw_trace_decision(query, limit=1, project_id=project_id)
+            if decision["sessions"]:
+                session_id = decision["sessions"][0]["session_id"]
+                resolved_project_id = project_id or decision["sessions"][0].get("project_id")
+        if not session_id:
+            return self._with_pending_hint(
+                {"session": None, "timeline": [], "files": [], "query": query, "project_id": resolved_project_id}
+            )
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            session_filters = ["session_id = ?"]
+            session_params: list[Any] = [session_id]
+            if resolved_project_id:
+                session_filters.append("project_id = ?")
+                session_params.append(resolved_project_id)
+            session_row = db.execute(
+                "SELECT session_id, agent, project_id, started_at, ended_at, metadata_json "
+                "FROM sessions "
+                f"WHERE {' AND '.join(session_filters)} "
+                "ORDER BY started_at DESC LIMIT 1",
+                tuple(session_params),
+            ).fetchone()
+            if session_row is None:
+                return self._with_pending_hint(
+                    {"session": None, "timeline": [], "files": [], "query": query, "project_id": resolved_project_id}
+                )
+            resolved_project_id = resolved_project_id or session_row["project_id"]
+            timeline_filters = ["session_id = ?"]
+            timeline_params: list[Any] = [session_id]
+            if resolved_project_id:
+                timeline_filters.append("project_id = ?")
+                timeline_params.append(resolved_project_id)
+            timeline = [
+                {
+                    "project_id": row["project_id"],
+                    "ts": row["ts"],
+                    "kind": row["kind"],
+                    "role": row["role"],
+                    "content": row["content"],
+                    "tool_name": row["tool_name"],
+                    "target_path": row["target_path"],
+                }
+                for row in db.execute(
+                    "SELECT project_id, ts, kind, role, content, tool_name, target_path "
+                    "FROM events "
+                    f"WHERE {' AND '.join(timeline_filters)} "
+                    "ORDER BY ts ASC LIMIT ?",
+                    (*timeline_params, int(limit)),
+                ).fetchall()
+            ]
+            files = [
+                {
+                    "project_id": row["project_id"],
+                    "path": row["path"],
+                    "canonical_path": _normalize_path(row["path"]),
+                    "touches": row["touches"],
+                    "operation": row["operation"],
+                    "last_seen_at": row["last_seen_at"],
+                }
+                for row in db.execute(
+                    "SELECT e.project_id, ft.path, COUNT(*) AS touches, MAX(ft.operation) AS operation, MAX(e.ts) AS last_seen_at "
+                    "FROM file_touches ft "
+                    "JOIN events e ON e.id = ft.event_id "
+                    "WHERE e.session_id = ? "
+                    + ("AND e.project_id = ? " if resolved_project_id else "")
+                    + "GROUP BY e.project_id, ft.path "
+                    "ORDER BY touches DESC, last_seen_at DESC LIMIT 50",
+                    (session_id, resolved_project_id) if resolved_project_id else (session_id,),
+                ).fetchall()
+            ]
+        if context_hops > 0 and timeline:
+            timeline = timeline[: max(limit, context_hops * 10)]
+        session = dict(session_row)
+        return self._with_pending_hint(
+            {"session": session, "timeline": timeline, "files": files, "query": query, "project_id": resolved_project_id}
+        )
+
+    def _raw_sprints(self, *, days: int = 14, project_id: str | None = None, gap_hours: int = 4) -> dict[str, Any]:
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            filters = ["COALESCE(s.ended_at, s.started_at) >= ?"]
+            params: list[Any] = [cutoff]
+            if project_id:
+                filters.append("s.project_id = ?")
+                params.append(project_id)
+            session_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT s.session_id, s.agent, s.project_id, s.started_at, s.ended_at, "
+                    "COUNT(DISTINCT e.id) AS event_count, COUNT(ft.path) AS file_touch_count, "
+                    "MAX(CASE WHEN COALESCE(e.content, '') <> '' THEN e.content END) AS summary "
+                    "FROM sessions s "
+                    "LEFT JOIN events e ON e.session_id = s.session_id "
+                    "LEFT JOIN file_touches ft ON ft.event_id = e.id "
+                    f"WHERE {' AND '.join(filters)} "
+                    "GROUP BY s.session_id, s.agent, s.project_id, s.started_at, s.ended_at "
+                    "ORDER BY COALESCE(s.ended_at, s.started_at) ASC, s.started_at ASC, s.session_id ASC",
+                    tuple(params),
+                ).fetchall()
+            ]
+        gap_seconds = gap_hours * 3600
+        sprints: list[dict[str, Any]] = []
+        current_by_project: dict[str, dict[str, Any]] = {}
+        sprint_count_by_project: dict[str, int] = {}
+        for row in session_rows:
+            row_project_id = str(row.get("project_id") or "default-project")
+            anchor_ts = row.get("ended_at") or row.get("started_at")
+            anchor_epoch = _ts_epoch(anchor_ts)
+            current = current_by_project.get(row_project_id)
+            if current is None or anchor_epoch - int(current["last_anchor_epoch"]) > gap_seconds:
+                sprint_count_by_project[row_project_id] = sprint_count_by_project.get(row_project_id, 0) + 1
+                current = {
+                    "project_id": row_project_id,
+                    "sprint": sprint_count_by_project[row_project_id],
+                    "started_at": anchor_ts,
+                    "ended_at": anchor_ts,
+                    "session_count": 0,
+                    "event_count": 0,
+                    "file_touch_count": 0,
+                    "sessions": [],
+                    "last_anchor_epoch": anchor_epoch,
+                }
+                current_by_project[row_project_id] = current
+                sprints.append(current)
+            current["session_count"] += 1
+            current["event_count"] += int(row.get("event_count") or 0)
+            current["file_touch_count"] += int(row.get("file_touch_count") or 0)
+            current["started_at"] = min(str(current.get("started_at") or anchor_ts or ""), str(anchor_ts or ""))
+            current["ended_at"] = max(str(current.get("ended_at") or anchor_ts or ""), str(anchor_ts or ""))
+            current["last_anchor_epoch"] = anchor_epoch
+            current["sessions"].append(
+                {
+                    "session_id": row.get("session_id"),
+                    "agent": row.get("agent"),
+                    "started_at": row.get("started_at"),
+                    "ended_at": row.get("ended_at"),
+                    "summary": _short_text(row.get("summary"), limit=160),
+                }
+            )
+        for sprint in sprints:
+            sprint.pop("last_anchor_epoch", None)
+            sprint["sessions"].sort(
+                key=lambda row: (str(row.get("ended_at") or row.get("started_at") or ""), str(row.get("session_id") or "")),
+                reverse=True,
+            )
+        sprints.sort(
+            key=lambda row: (str(row.get("ended_at") or ""), str(row.get("project_id") or ""), int(row.get("sprint") or 0)),
+            reverse=True,
+        )
+        return self._with_pending_hint({"days": days, "gap_hours": gap_hours, "project_id": project_id, "sprints": sprints})
+
+    def _raw_bridges(
+        self,
+        query: str,
+        query_b: str | None = None,
+        *,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        if query_b:
+            hits_a = self._raw_search(query, limit=max(limit * 8, 20), project_id=project_id, entity_types=["event", "file"])
+            hits_b = self._raw_search(query_b, limit=max(limit * 8, 20), project_id=project_id, entity_types=["event", "file"])
+            sessions_a = {str(hit.get("session_id")) for hit in hits_a if hit.get("session_id")}
+            sessions_b = {str(hit.get("session_id")) for hit in hits_b if hit.get("session_id")}
+            shared_sessions = sorted(sessions_a & sessions_b)
+            files_a = {str(hit.get("target_path")) for hit in hits_a if hit.get("target_path")}
+            files_b = {str(hit.get("target_path")) for hit in hits_b if hit.get("target_path")}
+            shared_files = sorted(files_a & files_b)
+            return self._with_pending_hint(
+                {
+                    "query_a": query,
+                    "query_b": query_b,
+                    "project_id": project_id,
+                    "shared_sessions": shared_sessions[:limit],
+                    "shared_files": shared_files[:limit],
+                    "count_shared_sessions": len(shared_sessions),
+                    "count_shared_files": len(shared_files),
+                }
+            )
+        hits = self._raw_search(query, limit=max(limit * 12, 40), project_id=project_id, entity_types=["event", "file"])
+        bridge_map: dict[tuple[str, str], dict[str, Any]] = {}
+        for hit in hits:
+            path = str(hit.get("target_path") or "")
+            session_id = str(hit.get("session_id") or "")
+            hit_project = str(hit.get("project_id") or "default-project")
+            if not path or not session_id:
+                continue
+            key = (hit_project, path)
+            record = bridge_map.setdefault(
+                key,
+                {
+                    "project_id": hit_project,
+                    "path": path,
+                    "session_ids": set(),
+                    "event_count": 0,
+                },
+            )
+            record["session_ids"].add(session_id)
+            record["event_count"] += 1
+        bridges = [
+            {
+                "project_id": record["project_id"],
+                "path": record["path"],
+                "session_count": len(record["session_ids"]),
+                "event_count": record["event_count"],
+                "sessions": sorted(record["session_ids"])[:limit],
+            }
+            for record in bridge_map.values()
+            if len(record["session_ids"]) > 1
+        ]
+        bridges.sort(
+            key=lambda row: (-int(row.get("session_count") or 0), -int(row.get("event_count") or 0), str(row.get("path") or "")),
+        )
+        return self._with_pending_hint({"query": query, "project_id": project_id, "bridges": bridges[:limit]})
+
+    def _raw_delegation_tree(
+        self,
+        *,
+        session_id: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_project_id = project_id
+        if not session_id and query:
+            decision = self._raw_trace_decision(query, limit=1, project_id=project_id)
+            if decision["sessions"]:
+                session_id = decision["sessions"][0]["session_id"]
+                resolved_project_id = project_id or decision["sessions"][0].get("project_id")
+        if not session_id:
+            return self._with_pending_hint({"sessions": [], "query": query, "project_id": resolved_project_id})
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            session_filters = ["session_id = ?"]
+            session_params: list[Any] = [session_id]
+            if resolved_project_id:
+                session_filters.append("project_id = ?")
+                session_params.append(resolved_project_id)
+            session_row = db.execute(
+                "SELECT session_id, project_id, agent, started_at, ended_at, metadata_json "
+                "FROM sessions "
+                f"WHERE {' AND '.join(session_filters)} LIMIT 1",
+                tuple(session_params),
+            ).fetchone()
+            if session_row is None:
+                return self._with_pending_hint({"sessions": [], "query": query, "project_id": resolved_project_id})
+            resolved_project_id = resolved_project_id or session_row["project_id"]
+            event_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT id, session_id, project_id, ts, kind, role, content, tool_name, target_path, payload_json "
+                    "FROM events "
+                    + ("WHERE project_id = ? " if resolved_project_id else "")
+                    + "ORDER BY ts ASC",
+                    (resolved_project_id,) if resolved_project_id else (),
+                ).fetchall()
+            ]
+            all_session_rows = [
+                dict(row)
+                for row in db.execute(
+                    "SELECT session_id, project_id, agent, started_at, ended_at, metadata_json "
+                    "FROM sessions "
+                    + ("WHERE project_id = ? " if resolved_project_id else "")
+                    + "ORDER BY started_at ASC, session_id ASC",
+                    (resolved_project_id,) if resolved_project_id else (),
+                ).fetchall()
+            ]
+        link_rows: list[dict[str, Any]] = []
+        for row in event_rows:
+            payload = _json_object(row.get("payload_json"))
+            link_rows.extend(_extract_session_links(row, payload))
+        children_by_parent: dict[str, list[dict[str, Any]]] = {}
+        parents_by_child: dict[str, list[dict[str, Any]]] = {}
+        for row in link_rows:
+            parent = str(row.get("parent_session_id") or "")
+            child = str(row.get("child_session_id") or "")
+            if not parent or not child:
+                continue
+            children_by_parent.setdefault(parent, []).append(row)
+            parents_by_child.setdefault(child, []).append(row)
+
+        descendant_depths: dict[str, int] = {}
+        queue: list[tuple[str, int]] = [(session_id, 0)]
+        seen_descendants = {session_id}
+        while queue:
+            current, depth = queue.pop(0)
+            if depth >= int(limit):
+                continue
+            for row in children_by_parent.get(current, []):
+                child = str(row.get("child_session_id") or "")
+                if not child:
+                    continue
+                next_depth = depth + 1
+                previous_depth = descendant_depths.get(child)
+                if previous_depth is None or next_depth < previous_depth:
+                    descendant_depths[child] = next_depth
+                if child not in seen_descendants:
+                    seen_descendants.add(child)
+                    queue.append((child, next_depth))
+
+        ancestor_depths: dict[str, int] = {}
+        queue = [(session_id, 0)]
+        seen_ancestors = {session_id}
+        while queue:
+            current, depth = queue.pop(0)
+            if depth >= int(limit):
+                continue
+            for row in parents_by_child.get(current, []):
+                parent = str(row.get("parent_session_id") or "")
+                if not parent:
+                    continue
+                next_depth = depth + 1
+                previous_depth = ancestor_depths.get(parent)
+                if previous_depth is None or next_depth < previous_depth:
+                    ancestor_depths[parent] = next_depth
+                if parent not in seen_ancestors:
+                    seen_ancestors.add(parent)
+                    queue.append((parent, next_depth))
+
+        related_ids = {session_id} | set(descendant_depths) | set(ancestor_depths)
+        session_rows = [row for row in all_session_rows if str(row.get("session_id") or "") in related_ids]
+
+        step_pairs: dict[tuple[str, str], dict[str, Any]] = {}
+        child_by_base_event: dict[str, str] = {}
+        for row in link_rows:
+            event_id = str(row.get("event_id") or "")
+            child_session_id = str(row.get("child_session_id") or "")
+            if event_id and child_session_id:
+                child_by_base_event[event_id] = child_session_id
+
+        for row in event_rows:
+            current_session_id = str(row.get("session_id") or "")
+            if current_session_id not in related_ids:
+                continue
+            if str(row.get("kind") or "") not in {"tool_call", "tool_result"}:
+                continue
+            base_event_id = _base_event_id(str(row.get("id") or ""))
+            pair = step_pairs.setdefault(
+                (current_session_id, base_event_id),
+                {
+                    "base_event_id": base_event_id,
+                    "tool_name": row.get("tool_name"),
+                    "call": {"ts": None, "content": None, "target_path": None},
+                    "result": {"ts": None, "content": None},
+                    "children": [],
+                },
+            )
+            if row.get("kind") == "tool_call":
+                pair["call"] = {"ts": row.get("ts"), "content": row.get("content"), "target_path": row.get("target_path")}
+            else:
+                pair["result"] = {"ts": row.get("ts"), "content": row.get("content")}
+            if row.get("target_path"):
+                child = {"type": "file", "label": row.get("target_path")}
+                if child not in pair["children"]:
+                    pair["children"].append(child)
+            child_session_id = child_by_base_event.get(base_event_id) or child_by_base_event.get(str(row.get("id") or ""))
+            if child_session_id:
+                child = {"type": "session", "label": child_session_id}
+                if child not in pair["children"]:
+                    pair["children"].append(child)
+
+        steps_by_session: dict[str, list[dict[str, Any]]] = {}
+        for (current_session_id, _base), pair in step_pairs.items():
+            steps_by_session.setdefault(current_session_id, []).append(pair)
+
+        def relation_for(candidate_session_id: str) -> str:
+            if candidate_session_id == session_id:
+                return "root"
+            if candidate_session_id in ancestor_depths:
+                return "ancestor"
+            if candidate_session_id in descendant_depths:
+                return "descendant"
+            return "related"
+
+        def depth_for(candidate_session_id: str) -> int:
+            if candidate_session_id == session_id:
+                return 0
+            if candidate_session_id in ancestor_depths:
+                return -int(ancestor_depths[candidate_session_id])
+            if candidate_session_id in descendant_depths:
+                return int(descendant_depths[candidate_session_id])
+            return 0
+
+        ordered_sessions = sorted(
+            session_rows,
+            key=lambda row: (
+                0 if str(row.get("session_id") or "") == session_id else 1,
+                0 if depth_for(str(row.get("session_id") or "")) >= 0 else 1,
+                abs(depth_for(str(row.get("session_id") or ""))),
+                str(row.get("started_at") or row.get("ended_at") or ""),
+                str(row.get("session_id") or ""),
+            ),
+        )
+        shaped_sessions = []
+        for row in ordered_sessions:
+            current_session_id = str(row.get("session_id") or "")
+            shaped_sessions.append(
+                {
+                    "session_id": current_session_id,
+                    "project_id": row.get("project_id"),
+                    "agent": row.get("agent"),
+                    "summary": None,
+                    "relation": relation_for(current_session_id),
+                    "depth": depth_for(current_session_id),
+                    "steps": steps_by_session.get(current_session_id, [])[: int(limit)],
+                    "children": children_by_parent.get(current_session_id, [])[: int(limit)],
+                    "parents": parents_by_child.get(current_session_id, [])[: int(limit)],
+                }
+            )
+        return self._with_pending_hint(
+            {
+                "root_session_id": session_id,
+                "sessions": shaped_sessions,
+                "query": query,
+                "project_id": resolved_project_id or project_id,
+            }
+        )
+
+    def _raw_session_excerpts(
+        self,
+        query: str,
+        session_rows: list[dict[str, Any]],
+        *,
+        project_id: str | None = None,
+    ) -> dict[tuple[str, str], str | None]:
+        if not session_rows:
+            return {}
+        excerpts: dict[tuple[str, str], str | None] = {}
+        terms = _query_terms(query)
+        if not terms:
+            return excerpts
+        keys = {(str(row.get("project_id") or "default-project"), str(row.get("session_id") or "")) for row in session_rows}
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            db.row_factory = sqlite3.Row
+            filters = []
+            params: list[Any] = []
+            if project_id:
+                filters.append("project_id = ?")
+                params.append(project_id)
+            term_clauses = []
+            for term in terms:
+                like = f"%{term}%"
+                term_clauses.extend(
+                    [
+                        "LOWER(COALESCE(content, '')) LIKE ?",
+                        "LOWER(COALESCE(target_path, '')) LIKE ?",
+                        "LOWER(COALESCE(tool_name, '')) LIKE ?",
+                    ]
+                )
+                params.extend([like, like, like])
+            filters.append("(" + " OR ".join(term_clauses) + ")")
+            for row in db.execute(
+                "SELECT session_id, project_id, SUBSTR(content, 1, 1200) AS content, target_path, tool_name, ts "
+                "FROM events "
+                f"WHERE {' AND '.join(filters)} "
+                "ORDER BY ts DESC",
+                tuple(params),
+            ).fetchall():
+                key = (str(row["project_id"] or "default-project"), str(row["session_id"] or ""))
+                if key not in keys or key in excerpts:
+                    continue
+                excerpts[key] = _short_text(_first_text(row["content"], row["target_path"], row["tool_name"]), limit=240)
+        return excerpts
+
+    def _with_pending_hint(self, result: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **result,
+            "uqa": {
+                **self.status(),
+                "rebuild_required": True,
+                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+                "mode": "raw-fallback",
+            },
+            "hint": "Results came from the raw store because the UQA sidecar is stale. Run `make sidecar WORKSPACE_ROOT=/path/to/repo` for richer indexed results.",
+        }
 
     def _hybrid_search(
         self,
@@ -3037,6 +4091,46 @@ def _short_text(text: str | None, *, limit: int = 200) -> str | None:
     if len(value) <= limit:
         return value
     return value[:limit] + "…"
+
+
+def _query_terms(query: str | None) -> list[str]:
+    text = str(query or "").strip().lower()
+    if not text:
+        return []
+    terms = [text]
+    for token in tokenize(text):
+        normalized = token.strip().lower()
+        if normalized and normalized not in terms:
+            terms.append(normalized)
+        if len(terms) >= 8:
+            break
+    return terms
+
+
+def _raw_text_score(query: str, *fields: Any) -> float:
+    terms = _query_terms(query)
+    if not terms:
+        return 0.0
+    haystacks = [str(field or "").lower() for field in fields if str(field or "").strip()]
+    if not haystacks:
+        return 0.0
+    score = 0.0
+    phrase = terms[0]
+    for haystack in haystacks:
+        if phrase and phrase in haystack:
+            score += 3.0
+        for term in terms[1:]:
+            if term in haystack:
+                score += 1.0
+    return score
+
+
+def _base_event_id(event_id: str | None) -> str:
+    text = str(event_id or "")
+    for suffix in (":call", ":result"):
+        if text.endswith(suffix):
+            return text[: -len(suffix)]
+    return text
 
 
 def _parse_ts(value: str | None) -> datetime | None:
