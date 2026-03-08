@@ -1,12 +1,29 @@
+from __future__ import annotations
+
+import importlib
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from agent_memory.models import CanonicalEvent
-from agent_memory.query import MemoryQueryService
-from agent_memory.storage import RawMemoryStore
+REPO_ROOT = Path(__file__).resolve().parents[1]
+UQA_CHECKOUT = REPO_ROOT / "uqa"
+if str(UQA_CHECKOUT) not in sys.path:
+    sys.path.insert(0, str(UQA_CHECKOUT))
+
+try:
+    importlib.import_module("uqa.engine")
+except Exception:
+    UQA_AVAILABLE = False
+else:
+    UQA_AVAILABLE = True
+
+from anamnesis.models import CanonicalEvent
+from anamnesis.query import MemoryQueryService
+from anamnesis.storage import RawMemoryStore
 
 
+@unittest.skipUnless(UQA_AVAILABLE, "UQA runtime dependencies are required for sidecar integration tests")
 class StorageTests(unittest.TestCase):
     def test_append_and_query(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -35,7 +52,7 @@ class StorageTests(unittest.TestCase):
                     content="We created install.sh after testing curl bootstrap flows.",
                 ),
             ])
-            service = MemoryQueryService(store)
+            service = MemoryQueryService(store, uqa_repo_root=UQA_CHECKOUT)
             orient = service.orient()
             self.assertEqual(orient["counts"]["events"], 2)
             hits = service.search("install")

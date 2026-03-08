@@ -1,0 +1,3 @@
+[submodule "uqa"]
+	path = uqa
+	url = https://github.com/cognica-io/uqa.git

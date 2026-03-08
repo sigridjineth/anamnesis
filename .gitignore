@@ -4,12 +4,10 @@ __pycache__/
 .venv/
 .data/
 .anamnesis/
-.agent-memory/
 .omx/
 build/
 dist/
 *.egg-info/
-uqa/
 flex/
 *.db
 *.sqlite

@@ -1,82 +1,92 @@
-# Architecture
+# Anamnesis architecture
 
-## Principle
+## Core idea
 
-Split the problem into three layers:
+Anamnesis separates:
 
-1. **Capture adapters** — product-specific ingestion for Claude, Codex, OpenCode
-2. **Shared query layer** — one Python/MCP interface for schema discovery and memory queries
-3. **Optional UQA sidecar** — richer indexing/search over normalized records projected from a Flex cell
+1. **capture**
+2. **canonical storage**
+3. **query execution**
 
-## Why this shape
+Capture is client-specific.
+Storage is normalized.
+Query execution is UQA-only.
 
-Claude, Codex, and OpenCode do not share the same hook/plugin model.
-They *do* all support MCP-style tool access, so the natural common layer is:
+---
 
-- client-specific adapters on the way in
-- MCP on the way out
+## Pipeline
 
-## Current scaffold
-
-```
-agent_memory/
-  adapters/      Canonical event contracts + starter normalizers
-  hooks/         Thin stdin hook entrypoints for Claude/Codex/OpenCode
-  codex_sync.py  Codex history + transcript backfill/import
-  opencode_sync.py OpenCode export/session backfill/import
-  providers/     Flex raw-cell provider + UQA sidecar provider
-  sync/          Flex -> UQA projection
-  service.py     Shared interface entry point
-  mcp_server.py  MCP wrapper (stdio plus deployable HTTP transports)
-examples/clients/
-  claude/
-  codex/
-  opencode/
+```text
+client hooks / exports
+    -> adapter normalization
+    -> canonical raw SQLite
+    -> UQA sidecar rebuild
+    -> MCP + Python API
 ```
 
-## Deployable bootstrap layer
+---
 
-`agent_memory.init_cli` turns the source layout into an installable workflow:
+## Layers
 
-- Claude:
-  - writes `.mcp.json`
-  - writes `.claude/settings.local.json`
-- Codex:
-  - merges hook entries into `~/.codex/settings.json`
-  - emits a ready-to-run `codex mcp add ...` script
-  - can optionally register the MCP server directly
-- OpenCode:
-  - writes `.opencode/opencode.json`
-  - writes `.opencode/plugins/anamnesis.ts`
+### Adapters
 
-This is the layer that makes the repo deployable as a Python package instead of only a source checkout.
+Client-specific adapters normalize raw payloads into `CanonicalEvent`.
 
-## Query flow
+Supported clients:
 
-### memory_sql
-Runs read-only SQL directly against the Flex cell.
+- Claude Code
+- Codex
+- OpenCode
 
-### memory_search
-1. Resolve Flex cell
-2. If UQA is importable, ensure the sidecar is fresh
-3. Run `text_match(content, ...)` on the UQA `memory_events` table
-4. Fall back to Flex `LIKE` search when UQA is unavailable
+### Raw store
 
-### memory_trace_file
-Uses the Flex cell directly because file lineage is naturally preserved in the source schema.
+The raw store is the durable append surface.
 
-## Canonical record projection
+Tables:
 
-The Flex -> UQA projection currently targets one denormalized table:
+- `sessions`
+- `events`
+- `file_touches`
 
-- `memory_events(id, session_id, project, created_at, type, role, tool_name, path, content)`
+### UQA sidecar
 
-That keeps the first integration simple while leaving room for later graph/vector enrichment.
+The sidecar is rebuilt from the raw store and is the supported query engine.
 
-## Next steps
+It currently materializes:
 
-1. Add richer OpenCode live-capture coverage beyond the current example plugin if the upstream event surfaces stabilize further
-2. Materialize graph edges into the UQA sidecar
-3. Add embeddings for real `knn_match()` support
-4. Add shared skills packaging for Claude/Codex/OpenCode
-5. Add richer presets that compile to SQL/UQA automatically
+- `sessions`
+- `events`
+- `file_touches`
+
+### Service layer
+
+`anamnesis.service.MemoryService` is the application facade used by:
+
+- CLI tools
+- MCP tools
+- Python callers
+
+---
+
+## Why UQA is mandatory
+
+The repo used to tolerate fallback-oriented wording.
+That is no longer the intended contract.
+
+Current contract:
+
+- raw storage may exist without an already-built sidecar
+- query execution may not proceed without UQA availability
+- if the sidecar is stale or missing, Anamnesis rebuilds it
+- if UQA is unavailable, that is an error state
+
+---
+
+## What this architecture does not claim
+
+It does not claim:
+
+- full Flex compile/enrichment parity
+- a complete background worker/service platform like Flex
+- a fully enriched graph schema yet
+- production-complete semantic/vector parity with the broader Flex site surface

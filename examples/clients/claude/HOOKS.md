@@ -2,7 +2,7 @@
 
 This project now includes a real Claude hook ingestion path:
 
-- hook command: `python3 -m agent_memory.hooks.claude`
+- hook command: `python3 -m anamnesis.hooks.claude`
 - storage target: `.anamnesis/anamnesis.db`
 - recommended config location: `.claude/settings.local.json`
 

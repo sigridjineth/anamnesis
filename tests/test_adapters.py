@@ -1,6 +1,6 @@
 import unittest
 
-from agent_memory.adapters import ClaudeAdapter, CodexAdapter, OpenCodeAdapter
+from anamnesis.adapters import ClaudeAdapter, CodexAdapter, OpenCodeAdapter
 
 
 class AdapterTests(unittest.TestCase):

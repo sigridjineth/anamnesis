@@ -2,12 +2,10 @@
   "mcp": {
     "anamnesis": {
       "command": "python3",
-      "args": ["-m", "agent_memory.mcp_server"],
+      "args": ["-m", "anamnesis.mcp_server"],
       "env": {
-        "ANAMNESIS_DB": "/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db",
-        "FLEX_REPO_ROOT": "/ABSOLUTE/PATH/TO/uqa-vibe/flex",
-        "UQA_REPO_ROOT": "/ABSOLUTE/PATH/TO/uqa-vibe/uqa",
-        "FLEX_CELL": "claude_code"
+        "ANAMNESIS_DB": "/ABSOLUTE/PATH/TO/anamnesis/.anamnesis/anamnesis.db",
+        "UQA_REPO_ROOT": "/ABSOLUTE/PATH/TO/anamnesis/uqa"
       }
     }
   },

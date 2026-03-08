@@ -6,14 +6,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_memory.init_cli import InitConfig, InitService
+from anamnesis.init_cli import InitConfig, InitService
 
 
 class InitCliTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
-        (self.root / "flex").mkdir()
         (self.root / "uqa").mkdir()
 
     def tearDown(self) -> None:
@@ -26,7 +25,6 @@ class InitCliTests(unittest.TestCase):
             python_executable="/usr/bin/python3",
             db_path=self.root / ".anamnesis" / "anamnesis.db",
             codex_home=codex_home,
-            flex_repo_root=self.root / "flex",
             uqa_repo_root=self.root / "uqa",
         )
 
@@ -46,13 +44,17 @@ class InitCliTests(unittest.TestCase):
             mcp["mcpServers"]["anamnesis"]["env"]["ANAMNESIS_DB"],
             str(self.root / ".anamnesis" / "anamnesis.db"),
         )
+        self.assertEqual(
+            mcp["mcpServers"]["anamnesis"]["env"]["UQA_REPO_ROOT"],
+            str(self.root / "uqa"),
+        )
 
         codex_settings = json.loads((codex_home / "settings.json").read_text(encoding="utf-8"))
         self.assertIn("UserPromptSubmit", codex_settings["hooks"])
         self.assertIn("PostToolUse", codex_settings["hooks"])
 
         opencode_plugin = (self.root / ".opencode" / "plugins" / "anamnesis.ts").read_text(encoding="utf-8")
-        self.assertIn("agent_memory.hooks.opencode", opencode_plugin)
+        self.assertIn("anamnesis.hooks.opencode", opencode_plugin)
 
     def test_init_merges_existing_json(self) -> None:
         (self.root / ".mcp.json").write_text(

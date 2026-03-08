@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from agent_memory import mcp_server
+from anamnesis import mcp_server
 
 
 class DummyService:

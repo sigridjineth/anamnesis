@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m anamnesis.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m anamnesis.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m anamnesis.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m anamnesis.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
           }
         ]
       }

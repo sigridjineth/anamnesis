@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_memory.ingest import IngestionService, load_payloads
-from agent_memory.storage import RawMemoryStore
+from anamnesis.ingest import IngestionService, load_payloads
+from anamnesis.storage import RawMemoryStore
 
 
 class IngestionTests(unittest.TestCase):

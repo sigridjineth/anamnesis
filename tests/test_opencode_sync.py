@@ -7,12 +7,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_memory.opencode_sync import (
+from anamnesis.opencode_sync import (
     OpenCodeSyncService,
     list_opencode_session_ids,
     parse_export_text,
 )
-from agent_memory.storage import RawMemoryStore
+from anamnesis.storage import RawMemoryStore
 
 
 SAMPLE_EXPORT = {

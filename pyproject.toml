@@ -1,14 +1,16 @@
-[build-system]
-requires = ["setuptools>=69"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "anamnesis"
 version = "0.1.0"
-description = "Anamnesis — shared multi-agent memory with canonical SQLite storage, optional UQA sidecars, and an MCP interface"
+description = "Anamnesis — UQA-native shared memory for Claude, Codex, and OpenCode"
 readme = "README.md"
+authors = [
+  { name = "sigridjineth", email = "sigrid.jinhyung@gmail.com" }
+]
 requires-python = ">=3.12"
-keywords = ["anamnesis", "agent-memory", "mcp", "sqlite", "uqa", "flex", "claude", "codex", "opencode"]
+dependencies = [
+  "uqa>=0.2.1",
+]
+keywords = ["anamnesis", "uqa", "mcp", "sqlite", "claude", "codex", "opencode"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -17,32 +19,39 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-# Keep the core scaffold stdlib-only; the MCP server is opt-in via extras.
-dependencies = []
 
 [project.optional-dependencies]
-# The server/runtime dependency is optional so tests and local scaffolding stay lightweight.
 mcp = ["mcp>=1.0.0"]
 
-[project.scripts]
-anamnesis-mcp = "agent_memory.mcp_server:main"
-agent-memory-mcp = "agent_memory.mcp_server:main"
-anamnesis-init = "agent_memory.init_cli:main"
-agent-memory-init = "agent_memory.init_cli:main"
-anamnesis-ingest = "agent_memory.ingest:main"
-agent-memory-ingest = "agent_memory.ingest:main"
-anamnesis-codex-sync = "agent_memory.codex_sync:main"
-agent-memory-codex-sync = "agent_memory.codex_sync:main"
-anamnesis-opencode-sync = "agent_memory.opencode_sync:main"
-agent-memory-opencode-sync = "agent_memory.opencode_sync:main"
-anamnesis-hook-claude = "agent_memory.hooks.claude:main"
-agent-memory-hook-claude = "agent_memory.hooks.claude:main"
-anamnesis-hook-codex = "agent_memory.hooks.codex:main"
-agent-memory-hook-codex = "agent_memory.hooks.codex:main"
-anamnesis-hook-opencode = "agent_memory.hooks.opencode:main"
-agent-memory-hook-opencode = "agent_memory.hooks.opencode:main"
+[project.urls]
+Homepage = "https://github.com/sigridjineth/anamnesis"
+Repository = "https://github.com/sigridjineth/anamnesis"
+Issues = "https://github.com/sigridjineth/anamnesis/issues"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["agent_memory*"]
-exclude = ["uqa*", "flex*", "src*", "tests*"]
+[project.scripts]
+anamnesis-mcp = "anamnesis.mcp_server:main"
+anamnesis-init = "anamnesis.init_cli:main"
+anamnesis-ingest = "anamnesis.ingest:main"
+anamnesis-codex-sync = "anamnesis.codex_sync:main"
+anamnesis-opencode-sync = "anamnesis.opencode_sync:main"
+anamnesis-hook-claude = "anamnesis.hooks.claude:main"
+anamnesis-hook-codex = "anamnesis.hooks.codex:main"
+anamnesis-hook-opencode = "anamnesis.hooks.opencode:main"
+
+[build-system]
+requires = ["uv_build>=0.8.14,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+  "mcp>=1.0.0",
+]
+
+[tool.uv.workspace]
+members = ["uqa"]
+
+[tool.uv.sources]
+uqa = { workspace = true }
+
+[tool.uv.build-backend]
+module-root = ""

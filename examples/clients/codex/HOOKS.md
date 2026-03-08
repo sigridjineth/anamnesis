@@ -2,8 +2,8 @@
 
 This project now includes two Codex ingestion paths:
 
-1. **Live hook capture** via `python3 -m agent_memory.hooks.codex`
-2. **Backfill/import** via `python3 -m agent_memory.codex_sync`
+1. **Live hook capture** via `python3 -m anamnesis.hooks.codex`
+2. **Backfill/import** via `python3 -m anamnesis.codex_sync`
 
 ## Live hooks
 
@@ -26,7 +26,7 @@ Replace `/ABSOLUTE/PATH/TO/uqa-vibe` in `settings.json`, then merge the relevant
 To import prior Codex prompts and transcript items into the same canonical store:
 
 ```bash
-python3 -m agent_memory.codex_sync \
+python3 -m anamnesis.codex_sync \
   --db .anamnesis/anamnesis.db \
   --project-id "$PWD"
 ```

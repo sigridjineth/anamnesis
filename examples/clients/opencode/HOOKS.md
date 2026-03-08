@@ -3,7 +3,7 @@
 This project now includes two OpenCode ingestion paths:
 
 1. **Live plugin capture** via `examples/clients/opencode/anamnesis.ts`
-2. **Backfill/import** via `python3 -m agent_memory.opencode_sync`
+2. **Backfill/import** via `python3 -m anamnesis.opencode_sync`
 
 ## Live plugin capture
 
@@ -15,7 +15,7 @@ OpenCode loads local plugins from:
 To use the example plugin:
 
 1. copy `examples/clients/opencode/anamnesis.ts` to `<project>/.opencode/plugins/anamnesis.ts`
-2. make sure `python3 -m agent_memory.hooks.opencode` works from that project directory
+2. make sure `python3 -m anamnesis.hooks.opencode` works from that project directory
 3. keep your MCP config pointed at the same database path:
    - `<project>/.anamnesis/anamnesis.db`
 
@@ -41,7 +41,7 @@ That gives you:
 To import previously saved OpenCode sessions:
 
 ```bash
-python3 -m agent_memory.opencode_sync \
+python3 -m anamnesis.opencode_sync \
   --db .anamnesis/anamnesis.db \
   --project-id "$PWD"
 ```
@@ -57,7 +57,7 @@ and exports them with:
 You can also import explicit exports:
 
 ```bash
-python3 -m agent_memory.opencode_sync \
+python3 -m anamnesis.opencode_sync \
   --db .anamnesis/anamnesis.db \
   --export-file /path/to/exported-session.json
 ```

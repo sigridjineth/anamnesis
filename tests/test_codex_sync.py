@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_memory.codex_sync import CodexSyncService
-from agent_memory.storage import RawMemoryStore
+from anamnesis.codex_sync import CodexSyncService
+from anamnesis.storage import RawMemoryStore
 
 
 class CodexSyncTests(unittest.TestCase):

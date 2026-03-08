@@ -11,7 +11,7 @@ export const AnamnesisPlugin: Plugin = async ({ $, directory }) => {
       ts: Date.now(),
     })
     await $`mkdir -p ${`${directory}/.anamnesis`}`
-    await $`printf '%s\n' ${body} | python3 -m agent_memory.hooks.opencode --db ${dbPath} --quiet`
+    await $`printf '%s\n' ${body} | python3 -m anamnesis.hooks.opencode --db ${dbPath} --quiet`
   }
 
   return {

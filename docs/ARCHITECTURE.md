@@ -1,79 +1,106 @@
-# Architecture
+# Detailed architecture
 
-## Goal
+## Overview
 
-Expose one query interface that Claude, Codex, and OpenCode can all consume through MCP, while keeping ingestion product-specific.
+Anamnesis uses a two-stage persistence model:
 
-## Layering
+1. canonical raw SQLite capture
+2. mandatory UQA sidecar projection
 
-### 1. Capture adapters (product-specific)
+This keeps ingestion simple while ensuring the query surface is UQA-native.
 
-Each agent environment emits different raw events:
+---
 
-- Claude Code: hooks / tool lifecycle / session metadata
-- Codex: hooks, `history.jsonl`, and session transcript files
-- OpenCode: plugins, `opencode export` session dumps, and session/tool events
+## Stage 1: raw capture
 
-These should normalize into a canonical event model instead of sharing raw formats.
+Raw capture is append-oriented and intentionally boring.
 
-### 2. Raw memory substrate (append-only)
+Why:
 
-Store normalized events in SQLite-first cells/tables. Keep this layer durable and minimally transformed.
+- hooks should not need to understand UQA internals
+- debugging ingestion should be possible with stock SQLite tools
+- rebuilding derived query state should stay cheap and deterministic
 
-### 3. Query/index layer
+The raw schema is:
 
-Use:
+- `sessions`
+- `events`
+- `file_touches`
 
-- **Flex-style SQLite cells** for portable, inspectable storage
-- **UQA** for richer SQL + text + vector + graph querying over indexed views/sidecars
+---
 
-### 4. Shared interface
+## Stage 2: UQA projection
 
-Expose a small MCP surface:
+The UQA sidecar is rebuilt from the raw store.
 
-- `memory_orient`
-- `memory_search`
-- `memory_trace_file`
-- `memory_trace_decision`
-- `memory_digest`
-- `memory_sql`
-- `memory_health`
+Current projection is deliberately small:
 
-## Why not one giant plugin abstraction?
+- `sessions`
+- `events`
+- `file_touches`
 
-Because plugin/hook models differ across clients. The stable cross-client contract is:
+That is enough to support:
 
-- **MCP** for querying
-- **shared skills/workflows** for UX
-- **adapter-specific collectors** for ingestion
+- UQA full-text search over normalized content
+- sidecar-backed orientation
+- read-only SQL against the projected memory
+- digest/tracing helpers implemented over UQA-readable tables
 
-## Initial implementation choices
+---
 
-- Root package: `agent_memory`
-- Backends:
-  - `agent_memory.backends.flex` — SQLite/cell-first querying
-  - `agent_memory.backends.uqa` — UQA Engine-based querying
-- Coordinator:
-  - `agent_memory.service.MemoryService`
-- Transport:
-  - `agent_memory.mcp_server`
-- Bootstrap:
-  - `agent_memory.init_cli`
+## Query contract
 
-## Sidecar direction
+All supported query paths go through UQA.
 
-Recommended long-term layout:
+That includes:
 
-- raw cell: `claude_code.db`
-- query/index sidecar: `claude_code.uqa.db`
+- `MemoryService.search`
+- `MemoryService.orient`
+- `MemoryService.trace_file`
+- `MemoryService.trace_decision`
+- `MemoryService.digest`
+- `MemoryService.sql`
 
-That lets Flex-style schemas stay portable while UQA owns richer indexing, graph edges, and query planning.
+There is no supported Flex or generic-SQLite fallback path anymore.
 
-## Deploy from the package, not from the examples
+---
 
-The `examples/clients/` directory remains useful as documentation, but actual deployment now comes from `anamnesis-init`.
-That keeps the runtime simple:
+## Client adapters
 
-1. install the Python package
-2. run `anamnesis-init`
-3. point Claude/Codex/OpenCode at the generated config
+### Claude
+
+Handles hook payloads from Claude Code lifecycle events.
+
+### Codex
+
+Handles:
+
+- prompt hooks
+- tool-use hooks
+- `history.jsonl`
+- transcript/session JSON
+
+### OpenCode
+
+Handles:
+
+- live plugin events
+- exported sessions from `opencode export`
+
+---
+
+## Packaging model
+
+The root project is an **uv package**.
+
+The repository also carries `uqa/` as:
+
+- a git submodule
+- a uv workspace member
+
+That enables a local release workflow that builds and verifies:
+
+- `uqa`
+- `anamnesis`
+
+in one workspace.

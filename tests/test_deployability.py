@@ -12,41 +12,39 @@ from importlib import import_module
 from pathlib import Path
 from unittest import mock
 
-from agent_memory.mcp_server import create_server
+from anamnesis.mcp_server import create_server
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 EXPECTED_SCRIPTS = {
-    "anamnesis-init": "agent_memory.init_cli:main",
-    "anamnesis-mcp": "agent_memory.mcp_server:main",
-    "anamnesis-ingest": "agent_memory.ingest:main",
-    "anamnesis-codex-sync": "agent_memory.codex_sync:main",
-    "anamnesis-opencode-sync": "agent_memory.opencode_sync:main",
-    "anamnesis-hook-claude": "agent_memory.hooks.claude:main",
-    "anamnesis-hook-codex": "agent_memory.hooks.codex:main",
-    "anamnesis-hook-opencode": "agent_memory.hooks.opencode:main",
+    "anamnesis-init": "anamnesis.init_cli:main",
+    "anamnesis-mcp": "anamnesis.mcp_server:main",
+    "anamnesis-ingest": "anamnesis.ingest:main",
+    "anamnesis-codex-sync": "anamnesis.codex_sync:main",
+    "anamnesis-opencode-sync": "anamnesis.opencode_sync:main",
+    "anamnesis-hook-claude": "anamnesis.hooks.claude:main",
+    "anamnesis-hook-codex": "anamnesis.hooks.codex:main",
+    "anamnesis-hook-opencode": "anamnesis.hooks.opencode:main",
 }
 
 
 class DeployabilityTests(unittest.TestCase):
-    def test_pyproject_declares_build_metadata_and_console_scripts(self) -> None:
+    def test_pyproject_declares_uv_workspace_metadata_and_console_scripts(self) -> None:
         data = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
 
-        self.assertEqual(data["build-system"]["build-backend"], "setuptools.build_meta")
+        self.assertEqual(data["build-system"]["build-backend"], "uv_build")
         self.assertEqual(data["project"]["name"], "anamnesis")
         self.assertEqual(data["project"]["requires-python"], ">=3.12")
+        self.assertIn("uqa>=0.2.1", data["project"]["dependencies"])
         self.assertIn("mcp>=1.0.0", data["project"]["optional-dependencies"]["mcp"])
+        self.assertEqual(data["tool"]["uv"]["workspace"]["members"], ["uqa"])
+        self.assertEqual(data["tool"]["uv"]["sources"]["uqa"], {"workspace": True})
+        self.assertEqual(data["tool"]["uv"]["build-backend"]["module-root"], "")
 
         scripts = data["project"]["scripts"]
         for name, target in EXPECTED_SCRIPTS.items():
             self.assertEqual(scripts[name], target)
-
-        package_find = data["tool"]["setuptools"]["packages"]["find"]
-        self.assertIn("agent_memory*", package_find["include"])
-        self.assertIn("uqa*", package_find["exclude"])
-        self.assertIn("flex*", package_find["exclude"])
-        self.assertIn("tests*", package_find["exclude"])
 
     def test_console_script_targets_are_importable(self) -> None:
         for name, target in EXPECTED_SCRIPTS.items():
@@ -57,10 +55,10 @@ class DeployabilityTests(unittest.TestCase):
 
     def test_cli_modules_expose_help(self) -> None:
         commands = [
-            (["-m", "agent_memory.init_cli", "--help"], "Write deployable Claude/Codex/OpenCode configuration for Anamnesis"),
-            (["-m", "agent_memory.ingest", "--help"], "Normalize agent hook payloads"),
-            (["-m", "agent_memory.codex_sync", "--help"], "Backfill Codex history"),
-            (["-m", "agent_memory.opencode_sync", "--help"], "Backfill OpenCode exported sessions"),
+            (["-m", "anamnesis.init_cli", "--help"], "Write deployable Claude/Codex/OpenCode configuration for Anamnesis"),
+            (["-m", "anamnesis.ingest", "--help"], "Normalize agent hook payloads"),
+            (["-m", "anamnesis.codex_sync", "--help"], "Backfill Codex history"),
+            (["-m", "anamnesis.opencode_sync", "--help"], "Backfill OpenCode exported sessions"),
         ]
 
         for args, expected in commands:
@@ -89,7 +87,7 @@ class DeployabilityTests(unittest.TestCase):
                 [
                     sys.executable,
                     "-m",
-                    "agent_memory.hooks.codex",
+                    "anamnesis.hooks.codex",
                     "--db",
                     str(db_path),
                     "--quiet",
@@ -103,9 +101,7 @@ class DeployabilityTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, msg=completed.stderr)
 
             db = sqlite3.connect(db_path)
-            row = db.execute(
-                "SELECT agent, kind, tool_name, content FROM events"
-            ).fetchone()
+            row = db.execute("SELECT agent, kind, tool_name, content FROM events").fetchone()
             db.close()
 
         self.assertEqual(row, ("codex", "tool_call", "shell", "bash -lc pwd"))
@@ -119,7 +115,7 @@ class DeployabilityTests(unittest.TestCase):
             return real_import(name, globals, locals, fromlist, level)
 
         with mock.patch("builtins.__import__", side_effect=fake_import):
-            with self.assertRaisesRegex(RuntimeError, r"pip install '\.\[mcp\]'"):
+            with self.assertRaisesRegex(RuntimeError, r"uv sync --extra mcp"):
                 create_server()
 
 
