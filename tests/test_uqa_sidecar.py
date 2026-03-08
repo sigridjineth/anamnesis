@@ -204,6 +204,20 @@ class UQASidecarTests(unittest.TestCase):
         self.assertTrue(delegation["sessions"])
         self.assertEqual(delegation["uqa"]["mode"], "raw-fallback")
 
+    def test_stale_lock_file_is_cleared_before_reporting_or_rebuilding(self) -> None:
+        lock_path = self.sidecar._rebuild_lock_path()  # noqa: SLF001 - regression coverage
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text("999999999", encoding="utf-8")
+
+        digest = self.sidecar.digest(days=5000, project_id="/repo/app")
+        self.assertFalse(lock_path.exists())
+        self.assertFalse(digest["uqa"]["rebuild_in_progress"])
+
+        lock_path.write_text("999999999", encoding="utf-8")
+        with self.sidecar._rebuild_lock(timeout_seconds=0.01):  # noqa: SLF001 - regression coverage
+            self.assertTrue(lock_path.exists())
+        self.assertFalse(lock_path.exists())
+
     def test_project_scoped_queries_keep_same_paths_separate_across_repos(self) -> None:
         self.store.append_events(
             [

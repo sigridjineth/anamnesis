@@ -303,7 +303,7 @@ class UQASidecar:
             "uqa": {
                 **self.status(),
                 "rebuild_required": True,
-                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+                "rebuild_in_progress": self._rebuild_in_progress(),
             },
             "macros": list(PUBLIC_MACROS),
             "operations": [
@@ -329,7 +329,7 @@ class UQASidecar:
             "status": {
                 **self.status(),
                 "rebuild_required": True,
-                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+                "rebuild_in_progress": self._rebuild_in_progress(),
             },
             "raw": raw_counts,
             "sidecar": {
@@ -2150,7 +2150,7 @@ class UQASidecar:
             "uqa": {
                 **self.status(),
                 "rebuild_required": True,
-                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+                "rebuild_in_progress": self._rebuild_in_progress(),
                 "mode": "raw-fallback",
             },
             "hint": "Results came from the raw store because the UQA sidecar is stale. Run `make sidecar WORKSPACE_ROOT=/path/to/repo` for richer indexed results.",
@@ -3413,10 +3413,21 @@ class UQASidecar:
                 while True:
                     try:
                         self.fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                        os.write(self.fd, str(os.getpid()).encode("utf-8"))
+                        payload = json.dumps(
+                            {
+                                "pid": os.getpid(),
+                                "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                            }
+                        )
+                        os.write(self.fd, payload.encode("utf-8"))
                         return self
                     except FileExistsError:
+                        if self.owner._clear_stale_rebuild_lock(lock_path):
+                            continue
                         if time.monotonic() >= deadline:
+                            self.owner._clear_stale_rebuild_lock(lock_path)
+                            if not lock_path.exists():
+                                continue
                             raise TimeoutError(f"Timed out waiting for sidecar rebuild lock: {lock_path}") from None
                         time.sleep(self.poll)
 
@@ -3431,6 +3442,50 @@ class UQASidecar:
                 return False
 
         return _Lock(self, timeout_seconds, poll_seconds)
+
+    def _rebuild_in_progress(self) -> bool:
+        lock_path = self._rebuild_lock_path()
+        if not lock_path.exists():
+            return False
+        if self._clear_stale_rebuild_lock(lock_path):
+            return False
+        return True
+
+    def _clear_stale_rebuild_lock(self, lock_path: Path | None = None) -> bool:
+        target = lock_path or self._rebuild_lock_path()
+        if not target.exists():
+            return False
+        pid = self._lock_pid(target)
+        if pid is not None and _pid_is_running(pid):
+            return False
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            return True
+        except PermissionError:
+            return False
+        return True
+
+    def _lock_pid(self, lock_path: Path | None = None) -> int | None:
+        target = lock_path or self._rebuild_lock_path()
+        try:
+            raw = target.read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, OSError, UnicodeDecodeError):
+            return None
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = raw
+        if isinstance(parsed, dict):
+            value = parsed.get("pid")
+        else:
+            value = parsed
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
 
     def _sidecar_baseline_counts(self) -> dict[str, int] | None:
         if not self.sidecar_path.exists():
@@ -4131,6 +4186,20 @@ def _base_event_id(event_id: str | None) -> str:
         if text.endswith(suffix):
             return text[: -len(suffix)]
     return text
+
+
+def _pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _parse_ts(value: str | None) -> datetime | None:
