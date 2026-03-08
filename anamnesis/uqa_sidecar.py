@@ -1419,38 +1419,47 @@ class UQASidecar:
             if row.get("session_id")
         }
         candidate_events: list[dict[str, Any]] = []
-        with closing(sqlite3.connect(self.raw_db_path)) as db:
-            db.row_factory = sqlite3.Row
-            event_filters = ["kind IN ('tool_call', 'tool_result')"]
-            event_params: list[Any] = []
-            if project_id:
-                event_filters.append("project_id = ?")
-                event_params.append(project_id)
-            event_filters.append(
-                "("
-                "COALESCE(target_path, '') IN (?, ?) "
-                "OR COALESCE(target_path, '') LIKE ? "
-                "OR COALESCE(content, '') LIKE ? "
-                "OR COALESCE(payload_json, '') LIKE ? "
-                ")"
-            )
-            event_params.extend([path, canonical, f"%/{basename}", f"%{canonical or basename}%", f"%{canonical or basename}%"])
-            if basename and basename != canonical:
-                event_filters[-1] = (
-                    event_filters[-1][:-1]
-                    + " OR COALESCE(content, '') LIKE ? OR COALESCE(payload_json, '') LIKE ?)"
-                )
-                event_params.extend([f"%{basename}%", f"%{basename}%"])
-            candidate_events = [
-                dict(row)
-                for row in db.execute(
-                    "SELECT id, session_id, project_id, ts, kind, role, SUBSTR(content, 1, 1200) AS content, tool_name, target_path, payload_json "
-                    "FROM events "
-                    f"WHERE {' AND '.join(event_filters)} "
-                    "ORDER BY ts DESC LIMIT 400",
-                    tuple(event_params),
-                ).fetchall()
-            ]
+        broad_basename_only = canonical == basename
+        if touch_rows or not broad_basename_only:
+            with closing(sqlite3.connect(self.raw_db_path)) as db:
+                db.row_factory = sqlite3.Row
+                event_filters = ["kind IN ('tool_call', 'tool_result')"]
+                event_params: list[Any] = []
+                if project_id:
+                    event_filters.append("project_id = ?")
+                    event_params.append(project_id)
+                mention_filters = [
+                    "COALESCE(target_path, '') IN (?, ?)",
+                    "COALESCE(target_path, '') LIKE ?",
+                    "COALESCE(content, '') LIKE ?",
+                    "COALESCE(payload_json, '') LIKE ?",
+                ]
+                event_params.extend([path, canonical, f"%/{basename}", f"%{canonical or basename}%", f"%{canonical or basename}%"])
+                if touch_rows and target_sessions:
+                    session_predicates = []
+                    for session_project_id, session_id in target_sessions:
+                        session_predicates.append("(project_id = ? AND session_id = ?)")
+                        event_params.extend([session_project_id, session_id])
+                    mention_filters.append("(" + " OR ".join(session_predicates) + ")")
+                elif basename and basename != canonical:
+                    mention_filters.extend(
+                        [
+                            "COALESCE(content, '') LIKE ?",
+                            "COALESCE(payload_json, '') LIKE ?",
+                        ]
+                    )
+                    event_params.extend([f"%{basename}%", f"%{basename}%"])
+                event_filters.append("(" + " OR ".join(mention_filters) + ")")
+                candidate_events = [
+                    dict(row)
+                    for row in db.execute(
+                        "SELECT id, session_id, project_id, ts, kind, role, SUBSTR(content, 1, 1200) AS content, tool_name, target_path, payload_json "
+                        "FROM events "
+                        f"WHERE {' AND '.join(event_filters)} "
+                        "ORDER BY ts DESC LIMIT 250",
+                        tuple(event_params),
+                    ).fetchall()
+                ]
         for row in candidate_events:
             payload = _json_object(row.get("payload_json"))
             for hint in _extract_lineage_hints(row, payload):
@@ -1648,7 +1657,7 @@ class UQASidecar:
                     "FROM events "
                     f"WHERE {' AND '.join(filters)} "
                     "ORDER BY ts DESC LIMIT ?",
-                    (*params, max(limit * 60, 600)),
+                    (*params, max(limit * 30, 200)),
                 ).fetchall()
             ]
         sessions: dict[tuple[str, str], dict[str, Any]] = {}
