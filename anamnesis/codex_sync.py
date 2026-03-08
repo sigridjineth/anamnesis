@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 from anamnesis.ingest import get_adapter
 from anamnesis.storage import RawMemoryStore
+from anamnesis.workspace_scope import apply_project_id, normalize_workspace_root, payload_mentions_workspace
 
 
 def _default_history_path() -> Path:
@@ -42,8 +43,11 @@ def iter_codex_history_payloads(
     path: str | Path | None = None,
     *,
     project_id: str | None = None,
+    workspace_root: str | Path | None = None,
+    force_project_id: bool = False,
 ) -> Iterable[dict[str, Any]]:
     history_path = Path(path or _default_history_path()).expanduser()
+    scope = normalize_workspace_root(workspace_root) if workspace_root else None
     if not history_path.exists():
         return
     with history_path.open(encoding="utf-8") as handle:
@@ -54,11 +58,11 @@ def iter_codex_history_payloads(
             raw = json.loads(line)
             if not isinstance(raw, dict):
                 continue
+            if scope is not None and not payload_mentions_workspace(raw, scope):
+                continue
             payload = dict(raw)
             payload["_source"] = "codex_history"
-            if project_id and not any(payload.get(key) for key in ("project_id", "projectId", "cwd", "project")):
-                payload["project_id"] = project_id
-            yield payload
+            yield apply_project_id(payload, project_id, force=force_project_id)
 
 
 def iter_codex_session_payloads(
@@ -66,8 +70,13 @@ def iter_codex_session_payloads(
     *,
     project_id: str | None = None,
     include_user_messages: bool = False,
+    workspace_root: str | Path | None = None,
+    matched_session_ids: set[str] | None = None,
+    force_project_id: bool = False,
 ) -> Iterable[dict[str, Any]]:
     sessions_root = Path(root or _default_sessions_root()).expanduser()
+    scope = normalize_workspace_root(workspace_root) if workspace_root else None
+    matched_session_ids = matched_session_ids or set()
     if not sessions_root.exists():
         return
 
@@ -79,6 +88,8 @@ def iter_codex_session_payloads(
         if not isinstance(session, dict):
             session = {}
         session_id = str(session.get("id") or path.stem)
+        if scope is not None and session_id not in matched_session_ids and not payload_mentions_workspace(data, scope):
+            continue
         session_ts = session.get("timestamp")
         call_lookup: dict[str, dict[str, Any]] = {}
         items = data.get("items")
@@ -102,8 +113,7 @@ def iter_codex_session_payloads(
             payload["_source"] = "codex_session"
             payload["_item_index"] = index
             payload["_session_timestamp"] = session_ts
-            if project_id and not any(payload.get(key) for key in ("project_id", "projectId", "cwd", "project")):
-                payload["project_id"] = project_id
+            payload = apply_project_id(payload, project_id, force=force_project_id)
             if item_type == "function_call":
                 tool_input = _maybe_json(payload.get("arguments"))
                 call_id = str(payload.get("call_id") or "")
@@ -149,17 +159,32 @@ class CodexSyncService:
         include_history: bool = True,
         include_sessions: bool = True,
         include_user_messages: bool = False,
+        workspace_root: str | Path | None = None,
+        force_project_id: bool = False,
     ) -> dict[str, Any]:
+        canonical_project_id = project_id
+        if workspace_root is not None and canonical_project_id is None:
+            canonical_project_id = str(normalize_workspace_root(workspace_root))
+            force_project_id = True
         summary: dict[str, Any] = {
             "db_path": str(self.store.db_path),
+            "workspace_root": str(normalize_workspace_root(workspace_root)) if workspace_root else None,
             "history": {"path": str(Path(history_path or _default_history_path()).expanduser()), "payloads": 0, "events": 0},
             "sessions": {"root": str(Path(sessions_root or _default_sessions_root()).expanduser()), "payloads": 0, "events": 0},
         }
+        matched_session_ids: set[str] = set()
         if include_history:
+            history_payloads = iter_codex_history_payloads(
+                history_path,
+                project_id=canonical_project_id,
+                workspace_root=workspace_root,
+                force_project_id=force_project_id,
+            )
             summary["history"] = {
                 "path": str(Path(history_path or _default_history_path()).expanduser()),
                 **self._ingest_payloads(
-                    iter_codex_history_payloads(history_path, project_id=project_id)
+                    history_payloads,
+                    matched_session_ids=matched_session_ids,
                 ),
             }
         if include_sessions:
@@ -168,20 +193,32 @@ class CodexSyncService:
                 **self._ingest_payloads(
                     iter_codex_session_payloads(
                         sessions_root,
-                        project_id=project_id,
+                        project_id=canonical_project_id,
                         include_user_messages=include_user_messages,
+                        workspace_root=workspace_root,
+                        matched_session_ids=matched_session_ids,
+                        force_project_id=force_project_id,
                     )
                 ),
             }
         return summary
 
-    def _ingest_payloads(self, payloads: Iterable[dict[str, Any]]) -> dict[str, int]:
+    def _ingest_payloads(
+        self,
+        payloads: Iterable[dict[str, Any]],
+        *,
+        matched_session_ids: set[str] | None = None,
+    ) -> dict[str, int]:
         adapter = get_adapter("codex")
         payload_count = 0
         event_count = 0
         batch: list[dict[str, Any]] = []
         for payload in payloads:
             payload_count += 1
+            if matched_session_ids is not None:
+                session_id = payload.get("session_id") or payload.get("sessionId") or payload.get("session")
+                if isinstance(session_id, str) and session_id.strip():
+                    matched_session_ids.add(session_id)
             batch.append(payload)
             if len(batch) >= self.batch_size:
                 result = self.store.append_payloads(adapter, batch)
@@ -201,6 +238,12 @@ def main() -> None:
     parser.add_argument("--history", default=str(_default_history_path()))
     parser.add_argument("--sessions-root", default=str(_default_sessions_root()))
     parser.add_argument("--project-id", help="Optional project identifier override")
+    parser.add_argument("--workspace-root", help="Only import Codex artifacts relevant to this workspace root")
+    parser.add_argument(
+        "--force-project-id",
+        action="store_true",
+        help="Always overwrite project_id on imported Codex payloads instead of only filling missing values.",
+    )
     parser.add_argument("--skip-history", action="store_true")
     parser.add_argument("--skip-sessions", action="store_true")
     parser.add_argument(
@@ -219,6 +262,8 @@ def main() -> None:
         include_history=not args.skip_history,
         include_sessions=not args.skip_sessions,
         include_user_messages=args.include_user_messages,
+        workspace_root=args.workspace_root,
+        force_project_id=args.force_project_id,
     )
     if not args.quiet:
         print(json.dumps(summary, indent=2))

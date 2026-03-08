@@ -2,7 +2,7 @@
 
 ## Claude Code
 
-Initialize config:
+Initialize config only:
 
 ```bash
 uv run anamnesis-init --workspace-root "$PWD"
@@ -20,9 +20,23 @@ Configured Claude hooks:
 - `PostToolUse`
 - `SessionEnd`
 
-The generated hook command writes into the project-local raw database:
+The generated hook command writes into the configured raw database:
 
 - `.anamnesis/anamnesis.db`
+
+Backfill existing Claude history for the current repo:
+
+```bash
+uv run anamnesis-claude-sync \
+  --db .anamnesis/anamnesis.db \
+  --workspace-root "$PWD"
+```
+
+Sources currently supported:
+
+- `~/.claude/history.jsonl`
+- `~/.claude/projects/<project>/sessions-index.json`
+- `~/.claude/transcripts/*.jsonl` (repo-matching transcripts only)
 
 ## Codex
 
@@ -42,18 +56,28 @@ Configured Codex hooks:
 - `UserPromptSubmit`
 - `PostToolUse`
 
+These hooks are now **workspace-routed**:
+
+- the global Codex hook command is not pinned to one repo DB
+- each incoming payload uses its own `cwd`
+- Anamnesis resolves the nearest workspace root and writes to:
+  - `<workspace>/.anamnesis/anamnesis.db`
+
 Register the MCP server if desired:
 
 ```bash
 bash .anamnesis/generated/register-codex-mcp.sh
 ```
 
+The generated Codex MCP registration no longer hard-pins `ANAMNESIS_DB`.
+It launches the server without a fixed DB env so the Codex-side Anamnesis server can follow the current workspace at process start.
+
 Backfill existing Codex history:
 
 ```bash
 uv run anamnesis-codex-sync \
   --db .anamnesis/anamnesis.db \
-  --project-id "$PWD"
+  --workspace-root "$PWD"
 ```
 
 Sources currently supported:
@@ -90,6 +114,7 @@ Backfill existing OpenCode sessions:
 ```bash
 uv run anamnesis-opencode-sync \
   --db .anamnesis/anamnesis.db \
+  --workspace-root "$PWD" \
   --all-sessions
 ```
 
@@ -113,3 +138,11 @@ This smoke test:
 - ingests one real sample payload through each client adapter
 - rebuilds the mandatory UQA sidecar
 - verifies `@survey`, `@chronicle`, and free-text search against the shared database
+
+## One-shot bootstrap
+
+If you want config + all historical backfill + UQA rebuild in one command:
+
+```bash
+uv run anamnesis-bootstrap --workspace-root "$PWD"
+```

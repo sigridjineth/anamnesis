@@ -1,7 +1,7 @@
 ---
 name: artifact-history
 description: Trace mentions and edits for a file through the shared memory layer.
-argument-hint: [path]
+argument-hint: "[path]"
 ---
 
 Use `memory_trace_file(path=...)`.

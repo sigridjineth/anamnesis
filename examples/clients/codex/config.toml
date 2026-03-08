@@ -3,5 +3,4 @@ command = "python3"
 args = ["-m", "anamnesis.mcp_server"]
 
 [mcp_servers.anamnesis.env]
-ANAMNESIS_DB = "/ABSOLUTE/PATH/TO/anamnesis/.anamnesis/anamnesis.db"
 UQA_REPO_ROOT = "/ABSOLUTE/PATH/TO/anamnesis/uqa"

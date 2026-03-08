@@ -179,7 +179,9 @@ def main() -> int:
 
         verify_help(venv_executable(venv_dir, "anamnesis"), "Anamnesis — searchable shared memory for Claude, Codex, and OpenCode.")
         verify_help(venv_executable(venv_dir, "anamnesis-init"), "Write deployable Claude/Codex/OpenCode configuration for Anamnesis")
+        verify_help(venv_executable(venv_dir, "anamnesis-bootstrap"), "Initialize a workspace, import all local Claude/Codex/OpenCode history")
         verify_help(venv_executable(venv_dir, "anamnesis-ingest"), "Normalize agent hook payloads")
+        verify_help(venv_executable(venv_dir, "anamnesis-claude-sync"), "Backfill Claude Code history")
         verify_help(venv_executable(venv_dir, "anamnesis-codex-sync"), "Backfill Codex history")
         verify_help(venv_executable(venv_dir, "anamnesis-opencode-sync"), "Backfill OpenCode exported sessions")
 

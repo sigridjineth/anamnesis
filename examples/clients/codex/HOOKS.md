@@ -9,6 +9,13 @@ This project now includes two Codex ingestion paths:
 
 The bundled `settings.json` example is shaped like a real local Codex `~/.codex/settings.json` hook config.
 
+Important:
+
+- the live Codex hook is **not pinned to one DB path**
+- it routes each payload into the nearest workspace-local:
+  - `<workspace>/.anamnesis/anamnesis.db`
+- this avoids the old “last initialized repo wins” behavior
+
 It captures:
 
 - `UserPromptSubmit`

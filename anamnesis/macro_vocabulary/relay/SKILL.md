@@ -1,7 +1,7 @@
 ---
 name: relay
 description: Show tool runs and delegated child sessions for a session or concept.
-argument-hint: [session id or query]
+argument-hint: "[session id or query]"
 ---
 
 Use `memory_delegation_tree(session_id=..., query=...)`.

@@ -62,7 +62,10 @@ class BaseAdapter(CaptureAdapter):
         if ts is None:
             return datetime.now(UTC).isoformat().replace("+00:00", "Z")
         if isinstance(ts, (int, float)):
-            return datetime.fromtimestamp(ts, UTC).isoformat().replace("+00:00", "Z")
+            value = float(ts)
+            if abs(value) >= 1_000_000_000_000:
+                value /= 1000
+            return datetime.fromtimestamp(value, UTC).isoformat().replace("+00:00", "Z")
         text = str(ts).strip()
         if not text:
             return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -70,6 +73,8 @@ class BaseAdapter(CaptureAdapter):
             numeric = float(text)
         except ValueError:
             return text
+        if abs(numeric) >= 1_000_000_000_000:
+            numeric /= 1000
         return datetime.fromtimestamp(numeric, UTC).isoformat().replace("+00:00", "Z")
 
     def _tool_name(self, raw: dict[str, Any]) -> str | None:

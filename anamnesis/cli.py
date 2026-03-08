@@ -6,6 +6,7 @@ import shlex
 from pathlib import Path
 from typing import Any, Sequence
 
+from anamnesis.bootstrap import main as bootstrap_main
 from anamnesis.config import Settings
 from anamnesis.init_cli import main as init_main
 from anamnesis.mcp_server import main as mcp_main
@@ -375,8 +376,18 @@ def _add_common_subcommands(subparsers: argparse._SubParsersAction[argparse.Argu
     sync.add_argument("--cell", default=None, help="Sync specific cell only (default: all)")
     sync.add_argument("--db")
 
+    sidecar = subparsers.add_parser("sidecar", help="Rebuild the UQA sidecar for this workspace or DB")
+    sidecar.add_argument("--db")
+    sidecar.add_argument("--sidecar-path")
+
     init = subparsers.add_parser("init", help="Generate Claude/Codex/OpenCode config for this workspace")
     init.add_argument("args", nargs=argparse.REMAINDER, help="Arguments forwarded to anamnesis-init")
+
+    bootstrap = subparsers.add_parser(
+        "bootstrap",
+        help="Initialize this workspace, import local Claude/Codex/OpenCode history, and rebuild the UQA sidecar",
+    )
+    bootstrap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments forwarded to anamnesis-bootstrap")
 
     mcp = subparsers.add_parser("mcp", help="Run the Anamnesis MCP server")
     mcp.add_argument("args", nargs=argparse.REMAINDER, help="Arguments forwarded to anamnesis-mcp")
@@ -406,6 +417,9 @@ def _run_cli(args: argparse.Namespace) -> int:
     if args.command == "mcp":
         return int(mcp_main(_strip_remainder_prefix(args.args)) or 0)
 
+    if args.command == "bootstrap":
+        return int(bootstrap_main(_strip_remainder_prefix(args.args)))
+
     if args.command == "sync":
         target_cells = [args.cell] if args.cell else [DEFAULT_CELL]
         results = [
@@ -423,6 +437,17 @@ def _run_cli(args: argparse.Namespace) -> int:
             db_path=args.db,
         )
         print(text)
+        return 0
+
+    if args.command == "sidecar":
+        service = MemoryService(settings=workspace_settings(Path.cwd()))
+        print(
+            json.dumps(
+                service.rebuild_uqa_sidecar(db_path=args.db, sidecar_path=args.sidecar_path),
+                indent=2,
+                default=str,
+            )
+        )
         return 0
 
     return 1

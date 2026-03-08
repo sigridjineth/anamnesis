@@ -128,6 +128,61 @@ class CodexSyncTests(unittest.TestCase):
         db.close()
         self.assertEqual(row, ("prompt", "user prompt"))
 
+    def test_sync_filters_to_workspace_and_force_sets_canonical_project_id(self) -> None:
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        self.history_path.write_text(
+            "\n".join(
+                [
+                    json.dumps({"session_id": "match", "ts": 1754609319, "text": f"open {workspace / 'src/app.py'}"}),
+                    json.dumps({"session_id": "other", "ts": 1754609320, "text": "ignore me"}),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (self.sessions_root / "match.json").write_text(
+            json.dumps(
+                {
+                    "session": {"id": "match", "timestamp": "2025-04-17T04:15:33.119Z"},
+                    "items": [
+                        {
+                            "type": "function_call",
+                            "call_id": "call-1",
+                            "name": "shell",
+                            "arguments": json.dumps({"file_path": str(workspace / "src/app.py"), "command": ["bash", "-lc", "pwd"]}),
+                            "status": "completed",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.sessions_root / "other.json").write_text(
+            json.dumps(
+                {
+                    "session": {"id": "other", "timestamp": "2025-04-17T04:15:33.119Z"},
+                    "items": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "ignore"}]}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        summary = CodexSyncService(RawMemoryStore(self.db_path)).sync(
+            history_path=self.history_path,
+            sessions_root=self.sessions_root,
+            workspace_root=workspace,
+            project_id=str(workspace.resolve()),
+            force_project_id=True,
+        )
+
+        self.assertEqual(summary["history"]["payloads"], 1)
+        self.assertEqual(summary["sessions"]["payloads"], 1)
+        db = sqlite3.connect(self.db_path)
+        projects = db.execute("SELECT DISTINCT project_id FROM events").fetchall()
+        db.close()
+        self.assertEqual(projects, [(str(workspace.resolve()),)])
+
 
 if __name__ == "__main__":
     unittest.main()

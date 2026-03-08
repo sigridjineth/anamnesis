@@ -5,7 +5,7 @@ DB_PATH ?= $(WORKSPACE_ROOT)/.anamnesis/anamnesis.db
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-.PHONY: help install sync build test compile verify init smoke-clients mcp mcp-http codex-sync opencode-sync clean-dist
+.PHONY: help install sync build test compile verify init bootstrap bootstrap-fast sidecar smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-16s %s\n", $$1, $$2}'
@@ -34,6 +34,15 @@ verify: ## Run tests, compile checks, build, and release verification
 init: ## Generate local Claude/Codex/OpenCode config for this workspace
 	$(UV) run anamnesis-init --workspace-root "$(WORKSPACE_ROOT)"
 
+bootstrap: ## Initialize this workspace, import Claude/Codex/OpenCode history for it, and rebuild the UQA sidecar
+	$(UV) run anamnesis-bootstrap --workspace-root "$(WORKSPACE_ROOT)"
+
+bootstrap-fast: ## Initialize this workspace and import history without rebuilding the UQA sidecar yet
+	$(UV) run anamnesis-bootstrap --workspace-root "$(WORKSPACE_ROOT)" --skip-sidecar-rebuild
+
+sidecar: ## Rebuild the UQA sidecar for DB_PATH
+	$(UV) run anamnesis sidecar --db "$(DB_PATH)"
+
 smoke-clients: ## End-to-end smoke test for Claude Code, Codex, and OpenCode wiring
 	$(UV) run python scripts/smoke_client_connections.py
 
@@ -45,6 +54,9 @@ mcp-http: ## Run the MCP server over streamable HTTP
 
 codex-sync: ## Backfill Codex history and sessions into DB_PATH
 	$(UV) run anamnesis-codex-sync --db "$(DB_PATH)"
+
+claude-sync: ## Backfill Claude history, project index, and transcripts into DB_PATH
+	$(UV) run anamnesis-claude-sync --db "$(DB_PATH)"
 
 opencode-sync: ## Backfill OpenCode sessions into DB_PATH
 	$(UV) run anamnesis-opencode-sync --db "$(DB_PATH)" --all-sessions

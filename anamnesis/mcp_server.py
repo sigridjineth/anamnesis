@@ -4,8 +4,10 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal, Sequence
 
+from anamnesis.config import Settings
 from anamnesis.service import MemoryService
 
 
@@ -109,7 +111,7 @@ def create_server(config: MCPServerConfig | None = None):
         raise RuntimeError("The MCP SDK is not installed. Install with: uv sync --extra mcp") from exc
 
     config = config or MCPServerConfig()
-    service = MemoryService()
+    service = MemoryService(settings=Settings.from_env(workspace_root=Path.cwd()))
     mcp = FastMCP(
         "anamnesis",
         debug=config.debug,

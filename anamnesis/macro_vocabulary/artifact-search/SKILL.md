@@ -1,7 +1,7 @@
 ---
 name: artifact-search
 description: Search for files by meaning or text through the shared memory layer.
-argument-hint: [query]
+argument-hint: "[query]"
 ---
 
 Use `memory_file_search(query=...)`.

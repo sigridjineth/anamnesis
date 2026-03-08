@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from anamnesis.cli import (
     PUBLIC_PRESET_TO_RUNTIME,
+    main,
     execute_mcp_query_text,
     execute_query,
     execute_query_text,
@@ -138,6 +140,22 @@ class CliSurfaceTests(unittest.TestCase):
             result = sync_projected_cell(workspace_root=self.root, db_path=self.db_path)
         rebuild.assert_called_once()
         self.assertEqual(result["backend"], "uqa->anamnesis-projection")
+
+    def test_sidecar_subcommand_rebuilds_uqa_sidecar(self) -> None:
+        with (
+            patch("anamnesis.cli.workspace_settings") as workspace_settings,
+            patch("anamnesis.cli.MemoryService") as memory_service_cls,
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            workspace_settings.return_value = object()
+            memory_service = memory_service_cls.return_value
+            memory_service.rebuild_uqa_sidecar.return_value = {"raw_db_path": str(self.db_path), "sidecar_path": str(self.db_path.with_suffix('.uqa.db'))}
+            rc = main(["sidecar", "--db", str(self.db_path)])
+
+        self.assertEqual(rc, 0)
+        memory_service_cls.assert_called_once()
+        memory_service.rebuild_uqa_sidecar.assert_called_once_with(db_path=str(self.db_path), sidecar_path=None)
+        self.assertIn("raw_db_path", stdout.getvalue())
 
 
 if __name__ == "__main__":

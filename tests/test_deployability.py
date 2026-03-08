@@ -20,8 +20,10 @@ PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 EXPECTED_SCRIPTS = {
     "anamnesis": "anamnesis.cli:main",
     "anamnesis-init": "anamnesis.init_cli:main",
+    "anamnesis-bootstrap": "anamnesis.bootstrap:main",
     "anamnesis-mcp": "anamnesis.mcp_server:main",
     "anamnesis-ingest": "anamnesis.ingest:main",
+    "anamnesis-claude-sync": "anamnesis.claude_sync:main",
     "anamnesis-codex-sync": "anamnesis.codex_sync:main",
     "anamnesis-opencode-sync": "anamnesis.opencode_sync:main",
     "anamnesis-hook-claude": "anamnesis.hooks.claude:main",
@@ -57,8 +59,10 @@ class DeployabilityTests(unittest.TestCase):
     def test_cli_modules_expose_help(self) -> None:
         commands = [
             (["-m", "anamnesis", "--help"], "Anamnesis — searchable shared memory for Claude, Codex, and OpenCode."),
+            (["-m", "anamnesis.bootstrap", "--help"], "Initialize a workspace, import all local Claude/Codex/OpenCode history"),
             (["-m", "anamnesis.init_cli", "--help"], "Write deployable Claude/Codex/OpenCode configuration for Anamnesis"),
             (["-m", "anamnesis.ingest", "--help"], "Normalize agent hook payloads"),
+            (["-m", "anamnesis.claude_sync", "--help"], "Backfill Claude Code history"),
             (["-m", "anamnesis.codex_sync", "--help"], "Backfill Codex history"),
             (["-m", "anamnesis.opencode_sync", "--help"], "Backfill OpenCode exported sessions"),
         ]

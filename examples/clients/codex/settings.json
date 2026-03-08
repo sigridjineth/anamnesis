@@ -6,7 +6,7 @@
           {
             "type": "command",
             "timeout": 5,
-            "command": "python3 -m anamnesis.hooks.codex --db \"/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db\" --quiet"
+            "command": "python3 -m anamnesis.hooks.codex --quiet"
           }
         ]
       }
@@ -17,7 +17,7 @@
           {
             "type": "command",
             "timeout": 5,
-            "command": "python3 -m anamnesis.hooks.codex --db \"/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db\" --quiet"
+            "command": "python3 -m anamnesis.hooks.codex --quiet"
           }
         ]
       }

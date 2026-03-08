@@ -3,14 +3,19 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from anamnesis import mcp_server
 
 
 class DummyService:
+    def __init__(self, *args, **kwargs):
+        pass
+
     def health(self):
         return {"ok": True}
 
@@ -203,6 +208,25 @@ class MCPServerTests(unittest.TestCase):
                 cell="claude_code",
                 params={"session": "ses-1"},
             )
+
+    def test_create_server_uses_current_working_directory_for_default_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = types.SimpleNamespace(
+                workspace_root=tmp,
+                raw_db_path=os.path.join(tmp, ".anamnesis", "anamnesis.db"),
+                uqa_sidecar_path=os.path.join(tmp, ".anamnesis", "anamnesis.uqa.db"),
+                uqa_repo_root=None,
+            )
+            with (
+                patch.dict(sys.modules, _fake_fastmcp_modules()),
+                patch.object(mcp_server, "MemoryService") as memory_service,
+                patch.object(mcp_server.Settings, "from_env", return_value=workspace) as from_env,
+                patch("pathlib.Path.cwd", return_value=Path(tmp)),
+            ):
+                mcp_server.create_server()
+
+            from_env.assert_called_once_with(workspace_root=Path(tmp))
+            memory_service.assert_called_once_with(settings=workspace)
 
 
 if __name__ == "__main__":

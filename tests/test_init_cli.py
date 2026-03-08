@@ -54,6 +54,21 @@ class InitCliTests(unittest.TestCase):
         codex_settings = json.loads((codex_home / "settings.json").read_text(encoding="utf-8"))
         self.assertIn("UserPromptSubmit", codex_settings["hooks"])
         self.assertIn("PostToolUse", codex_settings["hooks"])
+        codex_commands = [
+            hook["command"]
+            for block in codex_settings["hooks"]["UserPromptSubmit"]
+            for hook in block.get("hooks", [])
+            if hook.get("type") == "command"
+        ]
+        self.assertTrue(any("anamnesis.hooks.codex --quiet" in command for command in codex_commands))
+        self.assertFalse(any("anamnesis.hooks.codex --db" in command for command in codex_commands))
+
+        claude_settings = json.loads((self.root / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+        claude_command = claude_settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+        self.assertIn(str(self.root / ".anamnesis" / "anamnesis.db"), claude_command)
+
+        register_script = (self.root / ".anamnesis" / "generated" / "register-codex-mcp.sh").read_text(encoding="utf-8")
+        self.assertNotIn("ANAMNESIS_DB=", register_script)
 
         opencode_plugin = (self.root / ".opencode" / "plugins" / "anamnesis.ts").read_text(encoding="utf-8")
         self.assertIn("anamnesis.hooks.opencode", opencode_plugin)
@@ -149,7 +164,7 @@ class InitCliTests(unittest.TestCase):
         self.assertIn("echo keep-me", user_commands)
         self.assertEqual(sum("anamnesis.hooks.codex" in command for command in user_commands), 1)
         self.assertEqual(sum("anamnesis.hooks.codex" in command for command in post_commands), 1)
-        self.assertTrue(any("/usr/bin/python3 -m anamnesis.hooks.codex" in command for command in user_commands))
+        self.assertTrue(any("/usr/bin/python3 -m anamnesis.hooks.codex --quiet" in command for command in user_commands))
 
     def test_register_codex_uses_parent_home_for_dot_codex_path(self) -> None:
         codex_home = self.root / ".codex"

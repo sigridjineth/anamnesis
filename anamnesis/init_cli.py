@@ -146,8 +146,6 @@ def _render_codex_mcp_add_command(*, python_executable: str, db_path: Path, uqa_
         "mcp",
         "add",
         "anamnesis",
-        "--env",
-        f"ANAMNESIS_DB={db_path}",
     ]
     if uqa_repo_root is not None:
         command.extend(["--env", f"UQA_REPO_ROOT={uqa_repo_root}"])
@@ -216,7 +214,7 @@ class InitService:
 
         command = (
             f"cd \"$CLAUDE_PROJECT_DIR\" && {shlex.quote(self.config.python_executable)} "
-            f"-m anamnesis.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+            f"-m anamnesis.hooks.claude --db {shlex.quote(str(self.config.db_path))} --quiet"
         )
         settings = _load_json(settings_path)
         _ensure_hook_block(settings, "UserPromptSubmit", command)
@@ -238,7 +236,7 @@ class InitService:
         )
         command = (
             f"{shlex.quote(self.config.python_executable)} -m anamnesis.hooks.codex "
-            f"--db {shlex.quote(str(self.config.db_path))} --quiet"
+            f"--quiet"
         )
         _ensure_hook_block(settings, "UserPromptSubmit", command, timeout=5)
         _ensure_hook_block(settings, "PostToolUse", command, timeout=5)

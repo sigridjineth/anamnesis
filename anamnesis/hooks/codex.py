@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from anamnesis.hooks.common import run
+from anamnesis.hooks.common import run_codex
 
 
 def main() -> None:
-    run("codex")
+    run_codex()
 
 
 if __name__ == "__main__":

@@ -39,7 +39,28 @@ uv sync --all-packages --group dev
 
 ## Quickstart
 
-Initialize local client config:
+First-time bootstrap for a repo (config + Claude/Codex/OpenCode backfill + UQA rebuild):
+
+```bash
+cd ~/Desktop/work/pylon
+/Users/sigridjineth/Desktop/work/uqa-vibe/.venv/bin/python \
+  /Users/sigridjineth/Desktop/work/uqa-vibe/scripts/bootstrap_workspace_memory.py
+```
+
+Or, from inside this repo:
+
+```bash
+make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+If you want the fast path first and can rebuild the sidecar later:
+
+```bash
+make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
+make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+Initialize local client config only:
 
 ```bash
 make init

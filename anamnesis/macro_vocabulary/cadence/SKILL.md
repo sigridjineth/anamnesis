@@ -1,7 +1,7 @@
 ---
 name: cadence
 description: Group sessions into time-based work cadences.
-argument-hint: [days]
+argument-hint: "[days]"
 ---
 
 Use `memory_sprints(days=...)`.

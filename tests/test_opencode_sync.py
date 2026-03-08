@@ -209,6 +209,27 @@ class OpenCodeSyncTests(unittest.TestCase):
         db.close()
         self.assertEqual(failure_count, 1)
 
+    def test_sync_filters_to_workspace_and_force_sets_canonical_project_id(self) -> None:
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        export = json.loads(json.dumps(SAMPLE_EXPORT))
+        export["info"]["directory"] = str(workspace)
+        export["info"]["projectID"] = str(workspace)
+        self.export_path.write_text(json.dumps(export), encoding="utf-8")
+
+        summary = OpenCodeSyncService(RawMemoryStore(self.db_path)).sync(
+            export_files=[self.export_path],
+            workspace_root=workspace,
+            project_id=str(workspace.resolve()),
+            force_project_id=True,
+        )
+
+        self.assertEqual(summary["payloads"], 1)
+        db = sqlite3.connect(self.db_path)
+        projects = db.execute("SELECT DISTINCT project_id FROM events").fetchall()
+        db.close()
+        self.assertEqual(projects, [(str(workspace.resolve()),)])
+
 
 if __name__ == "__main__":
     unittest.main()

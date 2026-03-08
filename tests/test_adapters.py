@@ -17,6 +17,22 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(event.agent, "claude")
         self.assertEqual(event.content, "hello")
 
+    def test_claude_transcript_tool_result_normalization(self):
+        adapter = ClaudeAdapter()
+        [event] = adapter.normalize({
+            "type": "tool_result",
+            "session_id": "s-tool",
+            "project_id": "proj",
+            "timestamp": 1759167412041,
+            "tool_name": "read",
+            "tool_input": {"filePath": "src/app.py"},
+            "tool_output": {"preview": "hello from tool"},
+        })
+        self.assertEqual(event.kind, "tool_result")
+        self.assertEqual(event.tool_name, "read")
+        self.assertEqual(event.content, "hello from tool")
+        self.assertTrue(event.ts.startswith("2025-"))
+
     def test_codex_tool_normalization(self):
         adapter = CodexAdapter()
         [event] = adapter.normalize({

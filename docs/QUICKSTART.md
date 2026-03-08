@@ -15,7 +15,39 @@ git submodule update --init --recursive
 uv sync --all-packages --group dev
 ```
 
-## 2. Initialize client config
+## 2. First-time bootstrap for an existing repo
+
+If you want to stand inside another repo (for example `~/Desktop/work/pylon`) and do **everything in one go**:
+
+```bash
+cd ~/Desktop/work/pylon
+/Users/sigridjineth/Desktop/work/uqa-vibe/.venv/bin/python \
+  /Users/sigridjineth/Desktop/work/uqa-vibe/scripts/bootstrap_workspace_memory.py
+```
+
+That one command will:
+
+- generate Claude / Codex / OpenCode config for the repo
+- register the Codex MCP entry (unless you pass `--skip-register-codex`)
+- backfill matching Claude history / transcripts / project index
+- backfill matching Codex history / sessions
+- backfill matching OpenCode sessions
+- rebuild the mandatory UQA sidecar
+
+If you are already inside the Anamnesis repo, the equivalent shortcut is:
+
+```bash
+make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+If the first full sidecar build is too slow for your immediate workflow, use the fast path:
+
+```bash
+make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
+make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+## 3. Initialize client config only
 
 ```bash
 make init
@@ -33,7 +65,7 @@ Quick sanity check for all three client integrations:
 make smoke-clients
 ```
 
-## 3. Ingest data
+## 4. Ingest data manually
 
 ### Claude Code hook payload
 
@@ -58,7 +90,7 @@ uv run anamnesis-opencode-sync \
   --all-sessions
 ```
 
-## 4. Query through Python
+## 5. Query through Python
 
 ```python
 from anamnesis.service import MemoryService
@@ -69,7 +101,7 @@ print(service.search("install script"))
 print(service.thesis("curl install script"))
 ```
 
-## 5. Query through MCP
+## 6. Query through MCP
 
 ```bash
 make mcp
@@ -81,7 +113,7 @@ Or HTTP:
 make mcp-http HOST=0.0.0.0 PORT=8000
 ```
 
-## 6. Rebuild the UQA sidecar explicitly
+## 7. Rebuild the UQA sidecar explicitly
 
 ```bash
 uv run python - <<'PY'

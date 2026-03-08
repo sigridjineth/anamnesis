@@ -11,6 +11,7 @@ from typing import Any, Iterable, Sequence
 
 from anamnesis.ingest import get_adapter
 from anamnesis.storage import RawMemoryStore
+from anamnesis.workspace_scope import apply_project_id, normalize_workspace_root, payload_mentions_workspace
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -169,7 +170,14 @@ class OpenCodeSyncService:
         export_files: Iterable[str | Path] = (),
         project_id: str | None = None,
         storage_roots: Sequence[str | Path] = (),
+        workspace_root: str | Path | None = None,
+        force_project_id: bool = False,
     ) -> dict[str, Any]:
+        canonical_project_id = project_id
+        if workspace_root is not None and canonical_project_id is None:
+            canonical_project_id = str(normalize_workspace_root(workspace_root))
+            force_project_id = True
+        scope = normalize_workspace_root(workspace_root) if workspace_root else None
         adapter = get_adapter("opencode")
         payload_count = 0
         event_count = 0
@@ -188,8 +196,9 @@ class OpenCodeSyncService:
                 )
                 failures.append({"session_id": session_id, "error": str(exc)})
                 continue
-            if project_id and not payload.get("project_id"):
-                payload["project_id"] = project_id
+            if scope is not None and not payload_mentions_workspace(payload, scope):
+                continue
+            payload = apply_project_id(payload, canonical_project_id, force=force_project_id)
             for failure in payload.pop("_import_failures", []):
                 self.store.record_import_failure(
                     agent="opencode",
@@ -209,13 +218,15 @@ class OpenCodeSyncService:
                 failures.append({"path": resolved, "error": str(exc)})
                 continue
             payload["_source"] = payload.get("_source") or "opencode_export"
-            if project_id and not payload.get("project_id"):
-                payload["project_id"] = project_id
+            if scope is not None and not payload_mentions_workspace(payload, scope):
+                continue
+            payload = apply_project_id(payload, canonical_project_id, force=force_project_id)
             payload_count += 1
             event_count += self.store.append_payloads(adapter, [payload])["events"]
 
         return {
             "db_path": str(self.store.db_path),
+            "workspace_root": str(scope) if scope else None,
             "payloads": payload_count,
             "events": event_count,
             "failures": failures,
@@ -484,6 +495,12 @@ def main() -> None:
         help="Optional OpenCode storage root to use for discovery/fallback import. Repeatable.",
     )
     parser.add_argument("--project-id", help="Optional project identifier override")
+    parser.add_argument("--workspace-root", help="Only import OpenCode artifacts relevant to this workspace root")
+    parser.add_argument(
+        "--force-project-id",
+        action="store_true",
+        help="Always overwrite project_id on imported OpenCode payloads instead of only filling missing values.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -497,6 +514,8 @@ def main() -> None:
         export_files=args.export_file,
         project_id=args.project_id,
         storage_roots=args.storage_root,
+        workspace_root=args.workspace_root,
+        force_project_id=args.force_project_id,
     )
     if not args.quiet:
         print(json.dumps(summary, indent=2))

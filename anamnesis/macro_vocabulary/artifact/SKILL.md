@@ -1,7 +1,7 @@
 ---
 name: artifact
 description: Trace a file across sessions, aliases, and lineage.
-argument-hint: [path]
+argument-hint: "[path]"
 ---
 
 Use `memory_trace_file(path=...)`.
