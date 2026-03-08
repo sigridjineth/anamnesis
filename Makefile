@@ -4,6 +4,7 @@ WORKSPACE_ROOT ?= $(CURDIR)
 DB_PATH ?= $(WORKSPACE_ROOT)/.anamnesis/anamnesis.db
 HOST ?= 127.0.0.1
 PORT ?= 8000
+shquote = '$(subst ','"'"',$(1))'
 
 .PHONY: help install sync build test compile verify init bootstrap bootstrap-full bootstrap-fast sidecar survey search smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
 
@@ -50,7 +51,12 @@ survey: ## Fast compact workspace survey against DB_PATH
 	$(UV) run anamnesis search "@survey" --db "$(DB_PATH)"
 
 search: ## Run an Anamnesis query without VIRTUAL_ENV mismatch warnings (pass QUERY=...)
-	$(UV) run anamnesis search "$(QUERY)" --db "$(DB_PATH)"
+	@query=$(call shquote,$(QUERY)); \
+	if [ -z "$$query" ]; then \
+		echo "Usage: make search WORKSPACE_ROOT=/path/to/repo QUERY='@thesis query=\"ibk model\"'" >&2; \
+		exit 2; \
+	fi; \
+	$(UV) run anamnesis search "$$query" --db "$(DB_PATH)"
 
 smoke-clients: ## End-to-end smoke test for Claude Code, Codex, and OpenCode wiring
 	$(UV) run python scripts/smoke_client_connections.py
