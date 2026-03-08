@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 -m agent_memory.hooks.claude --db \"$CLAUDE_PROJECT_DIR/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ]
+  }
+}

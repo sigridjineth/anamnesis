@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 -m agent_memory.hooks.codex --db \"/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 -m agent_memory.hooks.codex --db \"/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db\" --quiet"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+[mcp_servers.anamnesis]
+command = "python3"
+args = ["-m", "agent_memory.mcp_server"]
+
+[mcp_servers.anamnesis.env]
+# Point the MCP server at the same canonical raw store populated by the hook commands.
+ANAMNESIS_DB = "/ABSOLUTE/PATH/TO/uqa-vibe/.anamnesis/anamnesis.db"
+# Keep the upstream clones read-only; these roots are only used for discovery/sidecar helpers.
+FLEX_REPO_ROOT = "/ABSOLUTE/PATH/TO/uqa-vibe/flex"
+UQA_REPO_ROOT = "/ABSOLUTE/PATH/TO/uqa-vibe/uqa"
+FLEX_CELL = "claude_code"
+
+# For live capture/backfill examples, also see:
+# - examples/clients/codex/settings.json
+# - examples/clients/codex/HOOKS.md
