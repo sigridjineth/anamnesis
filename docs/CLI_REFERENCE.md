@@ -1,5 +1,22 @@
 # CLI reference
 
+## Makefile shortcuts
+
+Common local workflows are wrapped in `make`:
+
+```bash
+make help
+make install
+make init
+make test
+make build
+make verify
+make codex-sync
+make opencode-sync
+make mcp
+make mcp-http HOST=0.0.0.0 PORT=8000
+```
+
 ## `anamnesis-init`
 
 Write deployable client config for Claude Code, Codex, and OpenCode.

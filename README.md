@@ -22,11 +22,17 @@ Codex hooks    ─┼─> adapters -> raw SQLite -> UQA sidecar -> MCP / Python 
 OpenCode hooks ─┘
 ```
 
-## Install with uv
+## Install
 
 ```bash
 git clone https://github.com/sigridjineth/anamnesis.git
 cd anamnesis
+make install
+```
+
+Equivalent manual `uv` flow:
+
+```bash
 git submodule update --init --recursive
 uv sync --all-packages --group dev
 ```
@@ -36,7 +42,7 @@ uv sync --all-packages --group dev
 Initialize local client config:
 
 ```bash
-uv run anamnesis-init --workspace-root "$PWD"
+make init
 ```
 
 Ingest a sample Claude payload:
@@ -58,8 +64,8 @@ print(service.search("install script"))
 Or run the MCP server:
 
 ```bash
-uv run anamnesis-mcp
-uv run anamnesis-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+make mcp
+make mcp-http HOST=0.0.0.0 PORT=8000
 ```
 
 Or use the Flex-compatible CLI surface:
@@ -68,6 +74,9 @@ Or use the Flex-compatible CLI surface:
 uv run flex search "@orient"
 uv run flex search "@file path=src/worker.py"
 uv run flex search "@story session=ses-1"
+# or use the simplified wrappers for setup/build/test:
+make build
+make test
 ```
 
 More: [Quickstart](docs/QUICKSTART.md)
@@ -89,6 +98,14 @@ Start here:
 ## Verification
 
 Recent local verification:
+
+```bash
+make test
+make build
+make verify
+```
+
+Equivalent manual `uv` flow:
 
 ```bash
 uv run python -m unittest discover -s tests -v

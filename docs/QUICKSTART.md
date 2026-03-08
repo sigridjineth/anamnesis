@@ -1,10 +1,16 @@
 # Quickstart
 
-## 1. Clone and sync
+## 1. Clone and install
 
 ```bash
 git clone https://github.com/sigridjineth/anamnesis.git
 cd anamnesis
+make install
+```
+
+Equivalent manual `uv` flow:
+
+```bash
 git submodule update --init --recursive
 uv sync --all-packages --group dev
 ```
@@ -12,7 +18,7 @@ uv sync --all-packages --group dev
 ## 2. Initialize client config
 
 ```bash
-uv run anamnesis-init --workspace-root "$PWD"
+make init
 ```
 
 This writes deployable local config for:
@@ -60,13 +66,13 @@ print(service.trace_decision("curl install script"))
 ## 5. Query through MCP
 
 ```bash
-uv run anamnesis-mcp
+make mcp
 ```
 
 Or HTTP:
 
 ```bash
-uv run anamnesis-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+make mcp-http HOST=0.0.0.0 PORT=8000
 ```
 
 ## 6. Rebuild the UQA sidecar explicitly
