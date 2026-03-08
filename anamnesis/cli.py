@@ -208,7 +208,10 @@ def _execute_builtin_macro_text(
 ) -> str | None:
     if not query.strip():
         return None
-    preset, args, positional = _split_macro_query(query)
+    try:
+        preset, args, positional = _split_macro_query(query)
+    except ValueError:
+        return None
     if preset not in BUILTIN_PRESET_NAMES:
         return None
 

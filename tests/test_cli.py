@@ -123,7 +123,7 @@ class CliSurfaceTests(unittest.TestCase):
         ):
             result = execute_query_text('@thesis query="worker history"', db_path=self.db_path, workspace_root=self.root)
         ensure_ready.assert_not_called()
-        trace_decision.assert_called_once_with("worker history", db_path=str(self.db_path), limit=10, project_id=None)
+        trace_decision.assert_called_once_with("worker history", db_path=str(self.db_path.resolve()), limit=10, project_id=None)
         self.assertEqual(json.loads(result)["query"], "worker history")
 
     def test_sync_projected_cell_uses_projector(self) -> None:
