@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import types
@@ -19,11 +20,29 @@ class DummyService:
     def search(self, query, **kwargs):
         return {"tool": "search", "query": query, **kwargs}
 
+    def file_search(self, query, **kwargs):
+        return {"tool": "file_search", "query": query, **kwargs}
+
     def trace_file(self, path, **kwargs):
         return {"tool": "trace_file", "path": path, **kwargs}
 
     def trace_decision(self, query, **kwargs):
         return {"tool": "trace_decision", "query": query, **kwargs}
+
+    def story(self, **kwargs):
+        return {"tool": "story", **kwargs}
+
+    def sprints(self, **kwargs):
+        return {"tool": "sprints", **kwargs}
+
+    def genealogy(self, query, **kwargs):
+        return {"tool": "genealogy", "query": query, **kwargs}
+
+    def bridges(self, query_a, query_b, **kwargs):
+        return {"tool": "bridges", "query_a": query_a, "query_b": query_b, **kwargs}
+
+    def delegation_tree(self, **kwargs):
+        return {"tool": "delegation_tree", **kwargs}
 
     def digest(self, **kwargs):
         return {"tool": "digest", **kwargs}
@@ -42,12 +61,14 @@ class FakeFastMCP:
         self.name = name
         self.kwargs = kwargs
         self.registered_tools: list[str] = []
+        self.tool_fns: dict[str, object] = {}
         self.run_calls: list[dict[str, object]] = []
         self.__class__.instances.append(self)
 
     def tool(self):
         def decorator(fn):
             self.registered_tools.append(fn.__name__)
+            self.tool_fns[fn.__name__] = fn
             return fn
 
         return decorator
@@ -125,12 +146,19 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(
             sorted(instance.registered_tools),
             [
+                "flex_search",
+                "memory_bridges",
+                "memory_delegation_tree",
                 "memory_digest",
+                "memory_file_search",
+                "memory_genealogy",
                 "memory_health",
                 "memory_orient",
                 "memory_rebuild_uqa_sidecar",
                 "memory_search",
+                "memory_sprints",
                 "memory_sql",
+                "memory_story",
                 "memory_trace_decision",
                 "memory_trace_file",
             ],
@@ -139,6 +167,42 @@ class MCPServerTests(unittest.TestCase):
             instance.run_calls,
             [{"transport": "sse", "mount_path": "/anamnesis"}],
         )
+
+    def test_project_scoped_tools_forward_project_id(self) -> None:
+        with (
+            patch.dict(sys.modules, _fake_fastmcp_modules()),
+            patch.object(mcp_server, "MemoryService", DummyService),
+        ):
+            mcp_server.create_server()
+
+        [instance] = FakeFastMCP.instances
+        trace = json.loads(instance.tool_fns["memory_trace_file"]("README.md", project_id="/repo/app"))
+        story = json.loads(instance.tool_fns["memory_story"](session_id="ses-1", project_id="/repo/app"))
+        digest = json.loads(instance.tool_fns["memory_digest"](project_id="/repo/app"))
+
+        self.assertEqual(trace["project_id"], "/repo/app")
+        self.assertEqual(story["project_id"], "/repo/app")
+        self.assertEqual(digest["project_id"], "/repo/app")
+
+    def test_flex_search_tool_routes_query_cell_and_params(self) -> None:
+        with (
+            patch.dict(sys.modules, _fake_fastmcp_modules()),
+            patch.object(mcp_server, "MemoryService", DummyService),
+            patch("anamnesis.flex_compat.execute_flex_mcp_text", return_value="[1 rows, ~1 tok]\n[]") as execute_flex_mcp_text,
+        ):
+            mcp_server.create_server()
+            [instance] = FakeFastMCP.instances
+            result = instance.tool_fns["flex_search"](
+                "@story",
+                cell="claude_code",
+                params={"session": "ses-1"},
+            )
+            self.assertEqual(result, "[1 rows, ~1 tok]\n[]")
+            execute_flex_mcp_text.assert_called_once_with(
+                "@story",
+                cell="claude_code",
+                params={"session": "ses-1"},
+            )
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ Tables:
 - `sessions`
 - `events`
 - `file_touches`
+- `import_failures`
 
 ### UQA sidecar
 
@@ -54,9 +55,15 @@ The sidecar is rebuilt from the raw store and is the supported query engine.
 
 It currently materializes:
 
+- `projects`
 - `sessions`
+- `files`
 - `events`
-- `file_touches`
+- `touch_activity`
+- `search_docs`
+- `graph_edges`
+- persisted UQA graph vertices / edges
+- persisted UQA vectors for hybrid retrieval
 
 ### Service layer
 
@@ -82,11 +89,10 @@ Current contract:
 
 ---
 
-## What this architecture does not claim
+## Intentional differences
 
-It does not claim:
+This architecture deliberately differs from Flex in a few ways:
 
-- full Flex compile/enrichment parity
-- a complete background worker/service platform like Flex
-- a fully enriched graph schema yet
-- production-complete semantic/vector parity with the broader Flex site surface
+- it centers UQA sidecar projection rather than Flex’s compile/daemon model
+- it keeps the raw store simple and rebuildable instead of reproducing Flex’s full table/module convention stack
+- it focuses on local query ergonomics over a service-heavy runtime package

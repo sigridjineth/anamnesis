@@ -49,10 +49,12 @@ python3 -m anamnesis.opencode_sync \
 By default that command discovers sessions with:
 
 - `opencode session list`
+- and, if that is unavailable, local OpenCode storage discovery
 
-and exports them with:
+It then prefers:
 
 - `opencode export <session-id>`
+- and falls back to reconstructing the session from local OpenCode storage when export fails
 
 You can also import explicit exports:
 
@@ -62,13 +64,15 @@ python3 -m anamnesis.opencode_sync \
   --export-file /path/to/exported-session.json
 ```
 
-## Important caveat
+## Import robustness
 
-Some real local OpenCode exports are malformed enough that strict JSON parsing fails.
+The importer now has two recovery layers:
 
-The importer is best-effort:
+- tolerant export parsing for noisy / prefixed `opencode export` output
+- local storage fallback assembled from OpenCode's `storage/session`, `storage/message`, and `storage/part` artifacts
 
-- good exports are imported
-- parse failures are reported in the summary and skipped
+So the normal order is:
 
-That means the backfill path is usable today, but you should expect occasional skipped sessions until the upstream export format is consistently valid.
+1. try `opencode export <session-id>`
+2. if export fails or discovery is unavailable, reconstruct from local storage
+3. only report a failure when neither path succeeds

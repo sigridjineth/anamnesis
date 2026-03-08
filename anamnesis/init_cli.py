@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CLIENTS = ("claude", "codex", "opencode")
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+SKILLS_SRC_ROOT = PACKAGE_ROOT / "skills-src"
 
 
 def _json_text(data: Any) -> str:
@@ -147,6 +149,7 @@ class InitService:
             files.update(self._init_codex())
         if "opencode" in self.config.clients:
             files.update(self._init_opencode())
+        files.update(self._install_skills())
         if self.config.register_codex and "codex" in self.config.clients:
             self._register_codex()
         return {
@@ -255,6 +258,30 @@ export default definePlugin({{
             str(config_path): _write_json(config_path, config),
             str(plugin_path): _write_text(plugin_path, plugin_text, force=True),
         }
+
+    def _install_skills(self) -> dict[str, str]:
+        if not SKILLS_SRC_ROOT.exists():
+            return {}
+        files: dict[str, str] = {}
+        destinations: list[Path] = []
+        if "claude" in self.config.clients:
+            destinations.append(self.config.workspace_root / ".claude" / "skills")
+        if any(client in self.config.clients for client in ("codex", "opencode")):
+            destinations.append(self.config.workspace_root / ".agents" / "skills")
+        for destination in destinations:
+            for skill_dir in sorted(SKILLS_SRC_ROOT.iterdir()):
+                if not skill_dir.is_dir():
+                    continue
+                source = skill_dir / "SKILL.md"
+                if not source.exists():
+                    continue
+                target = destination / skill_dir.name / "SKILL.md"
+                files[str(target)] = _write_text(
+                    target,
+                    source.read_text(encoding="utf-8"),
+                    force=True,
+                )
+        return files
 
     def _register_codex(self) -> None:
         if self.config.codex_home.name != ".codex":

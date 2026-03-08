@@ -138,6 +138,7 @@ def main() -> int:
         python_exe = venv_executable(venv_dir, "python")
         run(["uv", "pip", "install", "--python", str(python_exe), str(uqa_wheel), str(anamnesis_wheel)])
 
+        verify_help(venv_executable(venv_dir, "flex"), "Your AI sessions, searchable forever.")
         verify_help(venv_executable(venv_dir, "anamnesis-init"), "Write deployable Claude/Codex/OpenCode configuration for Anamnesis")
         verify_help(venv_executable(venv_dir, "anamnesis-ingest"), "Normalize agent hook payloads")
         verify_help(venv_executable(venv_dir, "anamnesis-codex-sync"), "Backfill Codex history")

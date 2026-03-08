@@ -29,6 +29,7 @@ Repository = "https://github.com/sigridjineth/anamnesis"
 Issues = "https://github.com/sigridjineth/anamnesis/issues"
 
 [project.scripts]
+flex = "anamnesis.flex_compat:main"
 anamnesis-mcp = "anamnesis.mcp_server:main"
 anamnesis-init = "anamnesis.init_cli:main"
 anamnesis-ingest = "anamnesis.ingest:main"

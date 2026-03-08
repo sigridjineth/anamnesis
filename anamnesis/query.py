@@ -31,19 +31,83 @@ class MemoryQueryService:
         *,
         limit: int = 10,
         project_id: str | None = None,
+        entity_types: list[str] | None = None,
         backend: str = "uqa",
     ) -> list[dict[str, Any]]:
         _assert_uqa_backend(backend)
-        return self.sidecar.search(query, limit=limit, project_id=project_id)
+        return self.sidecar.search(query, limit=limit, project_id=project_id, entity_types=entity_types)
 
-    def trace_file(self, path: str, *, limit: int = 20) -> dict[str, Any]:
-        return self.sidecar.trace_file(path, limit=limit)
+    def file_search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.sidecar.file_search(query, limit=limit, project_id=project_id)
 
-    def trace_decision(self, query: str, *, limit: int = 10) -> dict[str, Any]:
-        return self.sidecar.trace_decision(query, limit=limit)
+    def trace_file(
+        self,
+        path: str,
+        *,
+        limit: int = 20,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.trace_file(path, limit=limit, project_id=project_id)
 
-    def digest(self, *, days: int = 7) -> dict[str, Any]:
-        return self.sidecar.digest(days=days)
+    def trace_decision(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.trace_decision(query, limit=limit, project_id=project_id)
+
+    def story(
+        self,
+        *,
+        session_id: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.story(session_id=session_id, query=query, limit=limit, project_id=project_id)
+
+    def sprints(self, *, days: int = 14, project_id: str | None = None, gap_hours: int = 4) -> dict[str, Any]:
+        return self.sidecar.sprints(days=days, project_id=project_id, gap_hours=gap_hours)
+
+    def genealogy(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.genealogy(query, limit=limit, project_id=project_id)
+
+    def bridges(
+        self,
+        query_a: str,
+        query_b: str | None = None,
+        *,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.bridges(query_a, query_b, limit=limit, project_id=project_id)
+
+    def delegation_tree(
+        self,
+        *,
+        session_id: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.sidecar.delegation_tree(session_id=session_id, query=query, limit=limit, project_id=project_id)
+
+    def digest(self, *, days: int = 7, project_id: str | None = None) -> dict[str, Any]:
+        return self.sidecar.digest(days=days, project_id=project_id)
 
     def sql(self, sql: str) -> dict[str, Any]:
         return self.sidecar.sql(sql)

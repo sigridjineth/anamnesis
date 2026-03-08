@@ -12,3 +12,4 @@ flex/
 *.db
 *.sqlite
 *.sqlite3
+.flex/

@@ -46,10 +46,21 @@ CREATE TABLE IF NOT EXISTS file_touches (
     FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS import_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent TEXT NOT NULL,
+    source TEXT NOT NULL,
+    ref TEXT,
+    ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    error TEXT NOT NULL,
+    raw_excerpt TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_project_ts ON events(project_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);
 CREATE INDEX IF NOT EXISTS idx_file_touches_path ON file_touches(path);
+CREATE INDEX IF NOT EXISTS idx_import_failures_agent_ts ON import_failures(agent, ts);
 """
 
 
@@ -177,6 +188,26 @@ class RawMemoryStore:
             "payloads": payload_count,
             "events": written,
         }
+
+    def record_import_failure(
+        self,
+        *,
+        agent: str,
+        source: str,
+        ref: str | None,
+        error: str,
+        raw_excerpt: str | None = None,
+    ) -> None:
+        self.initialize()
+        with closing(self.connect()) as db:
+            db.execute(
+                """
+                INSERT INTO import_failures(agent, source, ref, error, raw_excerpt)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (agent, source, ref, error, raw_excerpt),
+            )
+            db.commit()
 
     def fetchall(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         self.initialize()

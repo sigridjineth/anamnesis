@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ from unittest.mock import patch
 from anamnesis.opencode_sync import (
     OpenCodeSyncService,
     list_opencode_session_ids,
+    list_storage_session_ids,
     parse_export_text,
 )
 from anamnesis.storage import RawMemoryStore
@@ -93,12 +95,35 @@ class OpenCodeSyncTests(unittest.TestCase):
         self.root = Path(self.tempdir.name)
         self.db_path = self.root / "memory.db"
         self.export_path = self.root / "session.json"
+        self.storage_root = self.root / "storage"
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def test_parse_export_text_strips_prefix(self) -> None:
-        text = "Exporting session: ses_1" + json.dumps(SAMPLE_EXPORT)
+    def _write_storage_session(self, payload: dict) -> str:
+        info = payload["info"]
+        session_id = info["id"]
+        project_id = info.get("projectID", "global")
+        session_dir = self.storage_root / "session" / project_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / f"{session_id}.json").write_text(json.dumps(info), encoding="utf-8")
+
+        message_dir = self.storage_root / "message" / session_id
+        message_dir.mkdir(parents=True, exist_ok=True)
+        part_root = self.storage_root / "part"
+        part_root.mkdir(parents=True, exist_ok=True)
+        for message in payload["messages"]:
+            message_info = message["info"]
+            message_id = message_info["id"]
+            (message_dir / f"{message_id}.json").write_text(json.dumps(message_info), encoding="utf-8")
+            part_dir = part_root / message_id
+            part_dir.mkdir(parents=True, exist_ok=True)
+            for part in message["parts"]:
+                (part_dir / f"{part['id']}.json").write_text(json.dumps(part), encoding="utf-8")
+        return session_id
+
+    def test_parse_export_text_strips_prefix_and_ansi(self) -> None:
+        text = "Exporting session: ses_1\x1b[91m\x1b[1m" + json.dumps(SAMPLE_EXPORT)
         payload = parse_export_text(text)
         self.assertEqual(payload["info"]["id"], "ses_1")
 
@@ -114,6 +139,13 @@ class OpenCodeSyncTests(unittest.TestCase):
             run.return_value.returncode = 0
             ids = list_opencode_session_ids()
         self.assertEqual(ids, ["ses_abc", "ses_def"])
+
+    def test_list_session_ids_falls_back_to_storage(self) -> None:
+        session_id = self._write_storage_session(SAMPLE_EXPORT)
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, ["opencode"])):
+            ids = list_opencode_session_ids(storage_roots=[self.storage_root])
+        self.assertEqual(ids, [session_id])
+        self.assertEqual(list_storage_session_ids(storage_roots=[self.storage_root]), [session_id])
 
     def test_sync_imports_export_file(self) -> None:
         self.export_path.write_text(json.dumps(SAMPLE_EXPORT), encoding="utf-8")
@@ -145,6 +177,22 @@ class OpenCodeSyncTests(unittest.TestCase):
         )
         self.assertEqual(file_touch, [("src/app.py",)])
 
+    def test_sync_falls_back_to_storage_when_export_fails(self) -> None:
+        session_id = self._write_storage_session(SAMPLE_EXPORT)
+        with patch("anamnesis.opencode_sync.export_opencode_session", side_effect=RuntimeError("export failed")):
+            summary = OpenCodeSyncService(RawMemoryStore(self.db_path)).sync(
+                session_ids=[session_id],
+                storage_roots=[self.storage_root],
+            )
+        self.assertEqual(summary["payloads"], 1)
+        self.assertEqual(summary["failures"], [])
+        self.assertEqual(summary["fallbacks"][0]["session_id"], session_id)
+
+        db = sqlite3.connect(self.db_path)
+        row = db.execute("SELECT COUNT(*) FROM events").fetchone()
+        db.close()
+        self.assertEqual(row[0], 5)
+
     def test_sync_records_parse_failures_and_continues(self) -> None:
         bad = self.root / "bad.json"
         good = self.root / "good.json"
@@ -156,6 +204,10 @@ class OpenCodeSyncTests(unittest.TestCase):
         )
         self.assertEqual(summary["payloads"], 1)
         self.assertEqual(len(summary["failures"]), 1)
+        db = sqlite3.connect(self.db_path)
+        failure_count = db.execute("SELECT COUNT(*) FROM import_failures").fetchone()[0]
+        db.close()
+        self.assertEqual(failure_count, 1)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ The raw schema is:
 - `sessions`
 - `events`
 - `file_touches`
+- `import_failures`
 
 ---
 
@@ -33,18 +34,25 @@ The raw schema is:
 
 The UQA sidecar is rebuilt from the raw store.
 
-Current projection is deliberately small:
+Current projection is intentionally richer and includes:
 
+- `projects`
 - `sessions`
+- `files`
 - `events`
-- `file_touches`
+- `touch_activity`
+- `search_docs`
+- `graph_edges`
+- persisted UQA graph vertices / edges
+- persisted UQA vectors for hybrid retrieval
 
-That is enough to support:
+That supports:
 
-- UQA full-text search over normalized content
+- UQA hybrid lexical + vector search
 - sidecar-backed orientation
 - read-only SQL against the projected memory
-- digest/tracing helpers implemented over UQA-readable tables
+- digest / trace / story / genealogy helpers over UQA-readable tables
+- graph-aware session/file/event navigation
 
 ---
 
@@ -86,6 +94,8 @@ Handles:
 
 - live plugin events
 - exported sessions from `opencode export`
+- local storage fallback reconstructed from OpenCode storage artifacts when export is unavailable or malformed
+- persistent import-failure recording for later inspection and health checks
 
 ---
 

@@ -129,24 +129,92 @@ def create_server(config: MCPServerConfig | None = None):
         return _json(service.health())
 
     @mcp.tool()
+    def flex_search(
+        query: str,
+        cell: str = "claude_code",
+        params: dict[str, Any] | None = None,
+    ) -> str:
+        from anamnesis.flex_compat import execute_flex_mcp_text
+
+        return execute_flex_mcp_text(query, cell=cell, params=params)
+
+    @mcp.tool()
     def memory_orient(db_path: str | None = None, project_id: str | None = None) -> str:
         return _json(service.orient(db_path=db_path, project_id=project_id))
 
     @mcp.tool()
-    def memory_search(query: str, db_path: str | None = None, limit: int = 10, project_id: str | None = None) -> str:
-        return _json(service.search(query, db_path=db_path, limit=limit, project_id=project_id, backend="uqa"))
+    def memory_search(
+        query: str,
+        db_path: str | None = None,
+        limit: int = 10,
+        project_id: str | None = None,
+        entity_types: str | None = None,
+    ) -> str:
+        parsed_entity_types = [part.strip() for part in entity_types.split(",") if part.strip()] if entity_types else None
+        return _json(
+            service.search(
+                query,
+                db_path=db_path,
+                limit=limit,
+                project_id=project_id,
+                entity_types=parsed_entity_types,
+                backend="uqa",
+            )
+        )
 
     @mcp.tool()
-    def memory_trace_file(path: str, db_path: str | None = None, limit: int = 20) -> str:
-        return _json(service.trace_file(path, db_path=db_path, limit=limit))
+    def memory_file_search(query: str, db_path: str | None = None, limit: int = 10, project_id: str | None = None) -> str:
+        return _json(service.file_search(query, db_path=db_path, limit=limit, project_id=project_id))
 
     @mcp.tool()
-    def memory_trace_decision(query: str, db_path: str | None = None, limit: int = 10) -> str:
-        return _json(service.trace_decision(query, db_path=db_path, limit=limit))
+    def memory_trace_file(path: str, db_path: str | None = None, limit: int = 20, project_id: str | None = None) -> str:
+        return _json(service.trace_file(path, db_path=db_path, limit=limit, project_id=project_id))
 
     @mcp.tool()
-    def memory_digest(days: int = 7, db_path: str | None = None) -> str:
-        return _json(service.digest(days=days, db_path=db_path))
+    def memory_trace_decision(query: str, db_path: str | None = None, limit: int = 10, project_id: str | None = None) -> str:
+        return _json(service.trace_decision(query, db_path=db_path, limit=limit, project_id=project_id))
+
+    @mcp.tool()
+    def memory_story(
+        db_path: str | None = None,
+        session_id: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> str:
+        return _json(service.story(db_path=db_path, session_id=session_id, query=query, limit=limit, project_id=project_id))
+
+    @mcp.tool()
+    def memory_sprints(days: int = 14, db_path: str | None = None, project_id: str | None = None, gap_hours: int = 4) -> str:
+        return _json(service.sprints(days=days, db_path=db_path, project_id=project_id, gap_hours=gap_hours))
+
+    @mcp.tool()
+    def memory_genealogy(query: str, db_path: str | None = None, limit: int = 20, project_id: str | None = None) -> str:
+        return _json(service.genealogy(query, db_path=db_path, limit=limit, project_id=project_id))
+
+    @mcp.tool()
+    def memory_bridges(
+        query_a: str,
+        query_b: str | None = None,
+        db_path: str | None = None,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> str:
+        return _json(service.bridges(query_a, query_b, db_path=db_path, limit=limit, project_id=project_id))
+
+    @mcp.tool()
+    def memory_delegation_tree(
+        db_path: str | None = None,
+        session_id: str | None = None,
+        query: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> str:
+        return _json(service.delegation_tree(db_path=db_path, session_id=session_id, query=query, limit=limit, project_id=project_id))
+
+    @mcp.tool()
+    def memory_digest(days: int = 7, db_path: str | None = None, project_id: str | None = None) -> str:
+        return _json(service.digest(days=days, db_path=db_path, project_id=project_id))
 
     @mcp.tool()
     def memory_sql(sql: str, db_path: str | None = None, read_only: bool = True) -> str:

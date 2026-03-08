@@ -17,16 +17,17 @@ class MemoryService:
     def health(self) -> dict[str, Any]:
         raw_store = RawMemoryStore(self.settings.raw_db_path)
         raw_store.initialize()
+        sidecar = UQASidecar(
+            self.settings.raw_db_path,
+            self.settings.uqa_sidecar_path,
+            repo_root=self.settings.uqa_repo_root,
+        )
         return {
             "workspace_root": str(self.settings.workspace_root),
             "raw_db_path": str(self.settings.raw_db_path),
-            "uqa_sidecar": UQASidecar(
-                self.settings.raw_db_path,
-                self.settings.uqa_sidecar_path,
-                repo_root=self.settings.uqa_repo_root,
-            ).status(),
             "uqa_repo_root": str(self.settings.uqa_repo_root) if self.settings.uqa_repo_root else None,
             "mode": "uqa-mandatory",
+            "uqa": sidecar.health(),
         }
 
     def ingest(self, events: Iterable[CanonicalEvent], *, db_path: str | None = None) -> dict[str, Any]:
@@ -50,28 +51,144 @@ class MemoryService:
         db_path: str | None = None,
         limit: int = 10,
         project_id: str | None = None,
+        entity_types: list[str] | None = None,
         backend: str = "uqa",
     ) -> dict[str, Any]:
-        hits = self._query(db_path).search(query, limit=limit, project_id=project_id, backend=backend)
+        hits = self._query(db_path).search(
+            query,
+            limit=limit,
+            project_id=project_id,
+            entity_types=entity_types,
+            backend=backend,
+        )
         return {
             "backend": "uqa",
             "results": hits,
             "hits": hits,
-            "metadata": {"query": query, "limit": limit, "backend": "uqa"},
+            "metadata": {
+                "query": query,
+                "limit": limit,
+                "backend": "uqa",
+                "entity_types": entity_types,
+            },
         }
 
-    def trace_file(self, path: str, *, db_path: str | None = None, limit: int = 20) -> dict[str, Any]:
-        result = self._query(db_path).trace_file(path, limit=limit)
+    def file_search(
+        self,
+        query: str,
+        *,
+        db_path: str | None = None,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        files = self._query(db_path).file_search(query, limit=limit, project_id=project_id)
+        return {
+            "backend": "uqa",
+            "query": query,
+            "files": files,
+            "results": files,
+            "metadata": {"limit": limit, "project_id": project_id},
+        }
+
+    def trace_file(
+        self,
+        path: str,
+        *,
+        db_path: str | None = None,
+        limit: int = 20,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).trace_file(path, limit=limit, project_id=project_id)
         result["results"] = result.get("touches", [])
         return result
 
-    def trace_decision(self, query: str, *, db_path: str | None = None, limit: int = 10) -> dict[str, Any]:
-        result = self._query(db_path).trace_decision(query, limit=limit)
+    def trace_decision(
+        self,
+        query: str,
+        *,
+        db_path: str | None = None,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).trace_decision(query, limit=limit, project_id=project_id)
         result["results"] = result.get("sessions", [])
         return result
 
-    def digest(self, *, days: int = 7, db_path: str | None = None) -> dict[str, Any]:
-        return self._query(db_path).digest(days=days)
+    def story(
+        self,
+        *,
+        session_id: str | None = None,
+        query: str | None = None,
+        db_path: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).story(session_id=session_id, query=query, limit=limit, project_id=project_id)
+        result["results"] = result.get("timeline", [])
+        return result
+
+    def sprints(
+        self,
+        *,
+        days: int = 14,
+        db_path: str | None = None,
+        project_id: str | None = None,
+        gap_hours: int = 4,
+    ) -> dict[str, Any]:
+        return self._query(db_path).sprints(days=days, project_id=project_id, gap_hours=gap_hours)
+
+    def genealogy(
+        self,
+        query: str,
+        *,
+        db_path: str | None = None,
+        limit: int = 20,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).genealogy(query, limit=limit, project_id=project_id)
+        result["results"] = result.get("timeline", [])
+        return result
+
+    def bridges(
+        self,
+        query_a: str,
+        query_b: str | None = None,
+        *,
+        db_path: str | None = None,
+        limit: int = 10,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).bridges(query_a, query_b, limit=limit, project_id=project_id)
+        if query_b:
+            result["results"] = result.get("shared_files", [])
+        else:
+            result["results"] = result.get("bridges", [])
+        return result
+
+    def delegation_tree(
+        self,
+        *,
+        session_id: str | None = None,
+        query: str | None = None,
+        db_path: str | None = None,
+        limit: int = 50,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._query(db_path).delegation_tree(
+            session_id=session_id,
+            query=query,
+            limit=limit,
+            project_id=project_id,
+        )
+        result["results"] = [
+            step
+            for session in result.get("sessions", [])
+            for step in session.get("steps", [])
+        ]
+        return result
+
+    def digest(self, *, days: int = 7, db_path: str | None = None, project_id: str | None = None) -> dict[str, Any]:
+        return self._query(db_path).digest(days=days, project_id=project_id)
 
     def sql(
         self,
