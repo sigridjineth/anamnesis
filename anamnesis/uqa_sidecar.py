@@ -1628,38 +1628,19 @@ class UQASidecar:
         )
 
     def _raw_trace_decision(self, query: str, *, limit: int = 10, project_id: str | None = None) -> dict[str, Any]:
-        terms = _query_terms(query)
-        if not terms:
+        if not _query_terms(query):
             return self._with_pending_hint({"query": query, "project_id": project_id, "sessions": []})
-        filters = []
-        params: list[Any] = []
-        if project_id:
-            filters.append("project_id = ?")
-            params.append(project_id)
-        term_clauses = []
-        for term in terms:
-            like = f"%{term}%"
-            term_clauses.extend(
-                [
-                    "LOWER(COALESCE(content, '')) LIKE ?",
-                    "LOWER(COALESCE(target_path, '')) LIKE ?",
-                    "LOWER(COALESCE(tool_name, '')) LIKE ?",
-                ]
-            )
-            params.extend([like, like, like])
-        filters.append("(" + " OR ".join(term_clauses) + ")")
-        with closing(sqlite3.connect(self.raw_db_path)) as db:
-            db.row_factory = sqlite3.Row
-            matched_rows = [
-                dict(row)
-                for row in db.execute(
-                    "SELECT session_id, project_id, ts, SUBSTR(content, 1, 1200) AS content, target_path, tool_name "
-                    "FROM events "
-                    f"WHERE {' AND '.join(filters)} "
-                    "ORDER BY ts DESC LIMIT ?",
-                    (*params, max(limit * 30, 200)),
-                ).fetchall()
-            ]
+        matched_rows = [
+            {
+                "session_id": row.get("session_id"),
+                "project_id": row.get("project_id"),
+                "ts": row.get("ts"),
+                "content": row.get("content"),
+                "target_path": row.get("target_path"),
+                "tool_name": row.get("tool_name"),
+            }
+            for row in self._raw_event_search_rows(query, project_id=project_id, limit=max(limit * 24, 180))
+        ]
         sessions: dict[tuple[str, str], dict[str, Any]] = {}
         for row in matched_rows:
             session_id = str(row.get("session_id") or "")
@@ -1692,17 +1673,20 @@ class UQASidecar:
                 record["excerpt"] = excerpt
         if sessions:
             with closing(sqlite3.connect(self.raw_db_path)) as db:
-                predicates = []
-                params = []
-                for record in sessions.values():
-                    predicates.append("(session_id = ? AND project_id = ?)")
-                    params.extend([record["session_id"], record["project_id"]])
+                db.row_factory = sqlite3.Row
+                session_ids = sorted({str(record["session_id"]) for record in sessions.values() if record.get("session_id")})
+                placeholders = ", ".join("?" for _ in session_ids)
+                filters = [f"session_id IN ({placeholders})"]
+                params: list[Any] = [*session_ids]
+                if project_id:
+                    filters.append("project_id = ?")
+                    params.append(project_id)
                 counts = {
-                    (str(row[0] or "default-project"), str(row[1] or "")): int(row[2] or 0)
+                    (str(row["project_id"] or "default-project"), str(row["session_id"] or "")): int(row["event_count"] or 0)
                     for row in db.execute(
                         "SELECT project_id, session_id, COUNT(*) AS event_count "
                         "FROM events WHERE "
-                        + " OR ".join(predicates)
+                        + " AND ".join(filters)
                         + " GROUP BY project_id, session_id",
                         tuple(params),
                     ).fetchall()
