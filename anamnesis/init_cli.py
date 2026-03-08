@@ -102,6 +102,44 @@ def _ensure_hook_block(
     blocks.append(block)
 
 
+def _remove_command_hooks_matching(
+    container: dict[str, Any],
+    event_names: tuple[str, ...],
+    predicate,
+) -> None:
+    hooks = container.get("hooks")
+    if not isinstance(hooks, dict):
+        return
+    for event_name in event_names:
+        blocks = hooks.get(event_name)
+        if not isinstance(blocks, list):
+            continue
+        new_blocks: list[dict[str, Any]] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                new_blocks.append(block)
+                continue
+            existing_hooks = block.get("hooks")
+            if not isinstance(existing_hooks, list):
+                new_blocks.append(block)
+                continue
+            filtered_hooks = [
+                item
+                for item in existing_hooks
+                if not (
+                    isinstance(item, dict)
+                    and item.get("type") == "command"
+                    and isinstance(item.get("command"), str)
+                    and predicate(item["command"])
+                )
+            ]
+            if filtered_hooks:
+                updated_block = dict(block)
+                updated_block["hooks"] = filtered_hooks
+                new_blocks.append(updated_block)
+        hooks[event_name] = new_blocks
+
+
 def _render_codex_mcp_add_command(*, python_executable: str, db_path: Path, uqa_repo_root: Path | None) -> list[str]:
     command = [
         "codex",
@@ -193,6 +231,11 @@ class InitService:
     def _init_codex(self) -> dict[str, str]:
         settings_path = self.config.codex_home / "settings.json"
         settings = _load_json(settings_path)
+        _remove_command_hooks_matching(
+            settings,
+            ("UserPromptSubmit", "PostToolUse"),
+            lambda command: "anamnesis.hooks.codex" in command,
+        )
         command = (
             f"{shlex.quote(self.config.python_executable)} -m anamnesis.hooks.codex "
             f"--db {shlex.quote(str(self.config.db_path))} --quiet"

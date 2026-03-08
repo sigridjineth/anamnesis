@@ -87,6 +87,70 @@ class InitCliTests(unittest.TestCase):
         settings = json.loads((claude_dir / "settings.local.json").read_text(encoding="utf-8"))
         self.assertEqual(len(settings["hooks"]["SessionEnd"]), 2)
 
+    def test_init_codex_prunes_stale_anamnesis_hook_commands_before_adding_current_one(self) -> None:
+        codex_home = self.root / ".fake-codex"
+        codex_home.mkdir()
+        (codex_home / "settings.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "UserPromptSubmit": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "/tmp/old/bin/python -m anamnesis.hooks.codex --db /tmp/old.db --quiet",
+                                    },
+                                    {
+                                        "type": "command",
+                                        "command": "echo keep-me",
+                                    },
+                                ]
+                            }
+                        ],
+                        "PostToolUse": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "/tmp/other/bin/python -m anamnesis.hooks.codex --db /tmp/other.db --quiet",
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        config = InitConfig(
+            workspace_root=self.root,
+            python_executable="/usr/bin/python3",
+            db_path=self.root / ".anamnesis" / "anamnesis.db",
+            codex_home=codex_home,
+        )
+        InitService(config).run()
+
+        settings = json.loads((codex_home / "settings.json").read_text(encoding="utf-8"))
+        user_commands = [
+            hook["command"]
+            for block in settings["hooks"]["UserPromptSubmit"]
+            for hook in block.get("hooks", [])
+            if hook.get("type") == "command"
+        ]
+        post_commands = [
+            hook["command"]
+            for block in settings["hooks"]["PostToolUse"]
+            for hook in block.get("hooks", [])
+            if hook.get("type") == "command"
+        ]
+
+        self.assertIn("echo keep-me", user_commands)
+        self.assertEqual(sum("anamnesis.hooks.codex" in command for command in user_commands), 1)
+        self.assertEqual(sum("anamnesis.hooks.codex" in command for command in post_commands), 1)
+        self.assertTrue(any("/usr/bin/python3 -m anamnesis.hooks.codex" in command for command in user_commands))
+
     def test_register_codex_uses_parent_home_for_dot_codex_path(self) -> None:
         codex_home = self.root / ".codex"
         config = InitConfig(
