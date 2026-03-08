@@ -11,6 +11,7 @@ make init
 make test
 make build
 make verify
+make smoke-clients
 make codex-sync
 make opencode-sync
 make mcp
@@ -53,8 +54,6 @@ The public macro vocabulary is:
 - `@relay` — delegation tree / child-session trace
 - `@thesis` — decision archaeology
 - `@vitals` — health and freshness checks
-
-Legacy runtime-era macro names such as `@story`, `@file`, or `@decision` are rejected with a replacement hint so callers move onto the Anamnesis vocabulary.
 
 ## `anamnesis-init`
 

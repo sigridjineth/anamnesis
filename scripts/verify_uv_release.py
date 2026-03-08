@@ -134,6 +134,12 @@ def smoke_init(venv_dir: Path) -> None:
             raise AssertionError(f"anamnesis-init did not create expected files: {missing}")
 
 
+def smoke_client_connections(venv_dir: Path) -> None:
+    python_exe = venv_executable(venv_dir, "python")
+    script_path = REPO_ROOT / "scripts" / "smoke_client_connections.py"
+    run([str(python_exe), str(script_path)], capture_output=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build UQA + Anamnesis release artifacts with uv and verify they install and run in a clean uv-managed virtualenv."
@@ -179,6 +185,7 @@ def main() -> int:
 
         smoke_ingest(venv_dir)
         smoke_init(venv_dir)
+        smoke_client_connections(venv_dir)
 
         if args.with_mcp:
             run(["uv", "pip", "install", "--python", str(python_exe), "mcp>=1.0.0"])

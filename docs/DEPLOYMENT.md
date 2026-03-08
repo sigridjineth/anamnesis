@@ -59,3 +59,5 @@ Before publishing Anamnesis:
 3. publish Anamnesis
 
 The workspace and release scripts are already arranged for that order.
+
+For the full preflight sequence and `uv publish` checklist, see [PyPI publish checklist](PYPI_PUBLISH_CHECKLIST.md).

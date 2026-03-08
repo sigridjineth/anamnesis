@@ -18,3 +18,4 @@ Use this folder as the expanded reference for Anamnesis.
 
 - [Deployment](DEPLOYMENT.md) — runtime assumptions, environment variables, and deployment notes
 - [uv release workflow](RELEASE_UV.md) — packaging and release order for `uqa` and `anamnesis`
+- [PyPI publish checklist](PYPI_PUBLISH_CHECKLIST.md) — final preflight before `uv publish`

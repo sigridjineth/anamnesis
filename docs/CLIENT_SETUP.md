@@ -98,3 +98,18 @@ Import order:
 1. try `opencode export`
 2. fall back to local OpenCode storage
 3. record import failures when recovery is incomplete
+
+## End-to-end smoke test
+
+After `anamnesis-init`, you can verify that all three client adapters still write into the same UQA-backed memory with:
+
+```bash
+make smoke-clients
+```
+
+This smoke test:
+
+- generates fresh Claude Code / Codex / OpenCode config in a temporary workspace
+- ingests one real sample payload through each client adapter
+- rebuilds the mandatory UQA sidecar
+- verifies `@survey`, `@chronicle`, and free-text search against the shared database

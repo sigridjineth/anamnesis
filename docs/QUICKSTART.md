@@ -27,6 +27,12 @@ This writes deployable local config for:
 - Codex
 - OpenCode
 
+Quick sanity check for all three client integrations:
+
+```bash
+make smoke-clients
+```
+
 ## 3. Ingest data
 
 ### Claude Code hook payload
@@ -58,9 +64,9 @@ uv run anamnesis-opencode-sync \
 from anamnesis.service import MemoryService
 
 service = MemoryService()
-print(service.orient())
+print(service.survey())
 print(service.search("install script"))
-print(service.trace_decision("curl install script"))
+print(service.thesis("curl install script"))
 ```
 
 ## 5. Query through MCP
@@ -88,11 +94,10 @@ PY
 
 After ingest + rebuild, Anamnesis gives you a UQA-backed surface for:
 
-- memory orientation
+- memory survey
 - hybrid search
-- file history and related files
-- decision/session tracing
-- session story views
-- sprint grouping
-- genealogy / bridge / delegation views
+- artifact history and related files
+- thesis / chronicle tracing
+- cadence grouping
+- lineage / crossroads / relay views
 - read-only SQL against the UQA sidecar

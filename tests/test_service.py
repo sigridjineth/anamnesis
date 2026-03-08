@@ -103,6 +103,42 @@ class MemoryServiceTests(unittest.TestCase):
             result = service.delegation_tree(session_id="s1")
         self.assertEqual([row["base_event_id"] for row in result["results"]], ["evt-1", "evt-2"])
 
+    def test_new_public_alias_methods_delegate_to_existing_service_methods(self) -> None:
+        service = MemoryService(self.settings)
+        with (
+            patch.object(service, "orient", return_value={"backend": "uqa"}) as orient,
+            patch.object(service, "digest", return_value={"sessions": []}) as digest,
+            patch.object(service, "trace_file", return_value={"touches": []}) as trace_file,
+            patch.object(service, "story", return_value={"timeline": []}) as story,
+            patch.object(service, "sprints", return_value={"sprints": []}) as sprints,
+            patch.object(service, "genealogy", return_value={"timeline": []}) as genealogy,
+            patch.object(service, "bridges", return_value={"bridges": []}) as bridges,
+            patch.object(service, "delegation_tree", return_value={"sessions": []}) as delegation_tree,
+            patch.object(service, "trace_decision", return_value={"sessions": []}) as trace_decision,
+            patch.object(service, "health", return_value={"mode": "uqa-mandatory"}) as health,
+        ):
+            self.assertEqual(service.survey(project_id="/repo/app")["backend"], "uqa")
+            self.assertEqual(service.synopsis(days=3)["sessions"], [])
+            self.assertEqual(service.artifact("README.md")["touches"], [])
+            self.assertEqual(service.chronicle(session_id="ses-1")["timeline"], [])
+            self.assertEqual(service.cadence(days=5)["sprints"], [])
+            self.assertEqual(service.lineage("install")["timeline"], [])
+            self.assertEqual(service.crossroads("install")["bridges"], [])
+            self.assertEqual(service.relay(session_id="ses-1")["sessions"], [])
+            self.assertEqual(service.thesis("install")["sessions"], [])
+            self.assertEqual(service.vitals()["mode"], "uqa-mandatory")
+
+        orient.assert_called_once_with(db_path=None, project_id="/repo/app")
+        digest.assert_called_once_with(days=3, db_path=None, project_id=None)
+        trace_file.assert_called_once_with("README.md", db_path=None, limit=20, project_id=None)
+        story.assert_called_once_with(session_id="ses-1", query=None, db_path=None, limit=50, project_id=None)
+        sprints.assert_called_once_with(days=5, db_path=None, project_id=None, gap_hours=4)
+        genealogy.assert_called_once_with("install", db_path=None, limit=20, project_id=None)
+        bridges.assert_called_once_with("install", None, db_path=None, limit=10, project_id=None)
+        delegation_tree.assert_called_once_with(session_id="ses-1", query=None, db_path=None, limit=50, project_id=None)
+        trace_decision.assert_called_once_with("install", db_path=None, limit=10, project_id=None)
+        health.assert_called_once_with(db_path=None)
+
 
 if __name__ == "__main__":
     unittest.main()

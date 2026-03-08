@@ -77,6 +77,12 @@ uv run anamnesis search "@chronicle session=ses-1"
 uv run anamnesis search "@synopsis days=7"
 ```
 
+Smoke-test all three client integrations end-to-end:
+
+```bash
+make smoke-clients
+```
+
 More: [Quickstart](docs/QUICKSTART.md)
 
 ## Documentation
@@ -91,6 +97,7 @@ Start here:
 - [Data model](docs/DATA_MODEL.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [uv release workflow](docs/RELEASE_UV.md)
+- [PyPI publish checklist](docs/PYPI_PUBLISH_CHECKLIST.md)
 - [Feature coverage](docs/FEATURE_COVERAGE.md)
 
 ## Verification
@@ -101,6 +108,7 @@ Recent local verification:
 make test
 make build
 make verify
+make smoke-clients
 ```
 
 Equivalent manual `uv` flow:

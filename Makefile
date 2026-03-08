@@ -5,7 +5,7 @@ DB_PATH ?= $(WORKSPACE_ROOT)/.anamnesis/anamnesis.db
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-.PHONY: help install sync build test compile verify init mcp mcp-http codex-sync opencode-sync clean-dist
+.PHONY: help install sync build test compile verify init smoke-clients mcp mcp-http codex-sync opencode-sync clean-dist
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-16s %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ verify: ## Run tests, compile checks, build, and release verification
 
 init: ## Generate local Claude/Codex/OpenCode config for this workspace
 	$(UV) run anamnesis-init --workspace-root "$(WORKSPACE_ROOT)"
+
+smoke-clients: ## End-to-end smoke test for Claude Code, Codex, and OpenCode wiring
+	$(UV) run python scripts/smoke_client_connections.py
 
 mcp: ## Run the MCP server over stdio
 	$(UV) run anamnesis-mcp

@@ -35,8 +35,6 @@ The supported user-facing query surface is:
 - macros: `@survey`, `@synopsis`, `@artifact`, `@chronicle`, `@cadence`, `@lineage`, `@crossroads`, `@relay`, `@thesis`, `@vitals`
 - MCP `anamnesis_search`
 
-Legacy runtime-era macro names are intentionally rejected with a replacement hint so callers migrate onto the Anamnesis vocabulary.
-
 ## Concrete capability notes
 
 ### File change and lineage tracking
@@ -97,6 +95,7 @@ Recent local verification:
 ```bash
 uv run python -m unittest discover -s tests -v
 uv run python -m compileall anamnesis tests scripts
+uv run python scripts/smoke_client_connections.py
 uv build --all-packages
 uv run python scripts/verify_uv_release.py
 ```
