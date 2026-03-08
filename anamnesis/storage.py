@@ -59,7 +59,10 @@ CREATE TABLE IF NOT EXISTS import_failures (
 CREATE INDEX IF NOT EXISTS idx_events_session_ts ON events(session_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_project_ts ON events(project_id, ts);
 CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);
+CREATE INDEX IF NOT EXISTS idx_events_target_path ON events(target_path);
+CREATE INDEX IF NOT EXISTS idx_events_project_session_kind_ts ON events(project_id, session_id, kind, ts);
 CREATE INDEX IF NOT EXISTS idx_file_touches_path ON file_touches(path);
+CREATE INDEX IF NOT EXISTS idx_file_touches_path_event ON file_touches(path, event_id);
 CREATE INDEX IF NOT EXISTS idx_import_failures_agent_ts ON import_failures(agent, ts);
 """
 

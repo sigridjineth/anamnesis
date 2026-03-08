@@ -195,6 +195,9 @@ class UQASidecarTests(unittest.TestCase):
         self.assertEqual(story["session"]["session_id"], "ses-1")
         self.assertTrue(story["timeline"])
 
+        story_by_query = self.sidecar.story(query="curl install script", limit=10, project_id="/repo/app")
+        self.assertEqual(story_by_query["session"]["session_id"], "ses-1")
+
         file_trace = self.sidecar.trace_file("scripts/install.sh", limit=10, project_id="/repo/app")
         self.assertEqual(file_trace["canonical_path"], "scripts/install.sh")
         self.assertTrue(file_trace["touches"])
@@ -290,6 +293,10 @@ class UQASidecarTests(unittest.TestCase):
                 )
             ]
         )
+
+        raw_trace = self.sidecar.trace_file("scripts/install-copy.sh", limit=10)
+        self.assertTrue(raw_trace["lineage"])
+        self.assertEqual(raw_trace["lineage"][0]["relation"], "copy")
 
         self.sidecar.rebuild()
         file_trace = self.sidecar.trace_file("scripts/install-copy.sh", limit=10)
