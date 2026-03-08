@@ -385,7 +385,7 @@ def _add_common_subcommands(subparsers: argparse._SubParsersAction[argparse.Argu
 
     bootstrap = subparsers.add_parser(
         "bootstrap",
-        help="Initialize this workspace, import local Claude/Codex/OpenCode history, and rebuild the UQA sidecar",
+        help="Initialize this workspace and backfill local Claude/Codex/OpenCode history",
     )
     bootstrap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments forwarded to anamnesis-bootstrap")
 

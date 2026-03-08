@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -122,6 +124,21 @@ class UQASidecarTests(unittest.TestCase):
         self.assertIn("chronicle", orient["macros"])
         self.assertIn("lineage", orient["macros"])
 
+    def test_orient_and_health_return_raw_pending_snapshot_before_sidecar_is_ready(self) -> None:
+        orient = self.sidecar.orient(project_id="/repo/app")
+        self.assertEqual(orient["counts"]["events"], 6)
+        self.assertEqual(orient["counts"]["sessions"], 2)
+        self.assertEqual(orient["counts"]["files"], 3)
+        self.assertTrue(orient["uqa"]["stale"])
+        self.assertTrue(orient["uqa"]["rebuild_required"])
+        self.assertFalse(orient["uqa"]["rebuild_in_progress"])
+        self.assertIn("events", orient["tables"])
+
+        health = self.sidecar.health()
+        self.assertEqual(health["raw"]["events"], 6)
+        self.assertTrue(health["status"]["stale"])
+        self.assertTrue(health["status"]["rebuild_required"])
+
     def test_search_trace_file_trace_decision_and_digest_use_sidecar(self) -> None:
         self.sidecar.rebuild()
 
@@ -240,6 +257,17 @@ class UQASidecarTests(unittest.TestCase):
         self.assertEqual(file_trace["lineage"][0]["relation"], "copy")
         self.assertEqual(file_trace["lineage"][0]["match_role"], "target")
         self.assertEqual(file_trace["lineage"][0]["counterpart_path"], "scripts/install.sh")
+
+    def test_is_stale_detects_sidecar_count_mismatch_even_if_sidecar_is_newer(self) -> None:
+        self.sidecar.rebuild()
+        with sqlite3.connect(self.sidecar_db) as db:
+            db.execute("DELETE FROM _data_events")
+            db.execute("DELETE FROM _data_sessions")
+            db.execute("DELETE FROM _data_touch_activity")
+            db.commit()
+        future_mtime = self.raw_db.stat().st_mtime + 60
+        os.utime(self.sidecar_db, (future_mtime, future_mtime))
+        self.assertTrue(self.sidecar._is_stale())  # noqa: SLF001 - explicit regression check
 
     def test_delegation_tree_walks_nested_session_links(self) -> None:
         self.store.append_events(

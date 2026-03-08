@@ -17,6 +17,7 @@ from anamnesis.opencode_sync import (
     default_storage_roots,
     list_opencode_session_ids,
     list_storage_session_ids,
+    list_storage_session_ids_for_workspace,
 )
 from anamnesis.service import MemoryService
 from anamnesis.storage import RawMemoryStore
@@ -32,6 +33,7 @@ class BootstrapConfig:
     codex_home: Path = field(default_factory=lambda: Path.home() / ".codex")
     register_codex: bool = True
     rebuild_sidecar: bool = True
+    refresh_backfill: bool = False
     claude_history_path: Path = field(default_factory=lambda: Path.home() / ".claude" / "history.jsonl")
     claude_transcripts_root: Path = field(default_factory=lambda: Path.home() / ".claude" / "transcripts")
     claude_projects_root: Path = field(default_factory=lambda: Path.home() / ".claude" / "projects")
@@ -65,42 +67,69 @@ class BootstrapService:
         summaries: dict[str, Any] = {
             "init": init_summary,
         }
+        bootstrap_state_path = self.workspace_root / ".anamnesis" / "bootstrap-state.json"
+        performed_backfill = False
+        skipped_existing = False
+        if self.config.refresh_backfill:
+            skip_backfill = False
+        elif self._bootstrap_state_ready(bootstrap_state_path):
+            skip_backfill = True
+            skipped_existing = True
+        elif self._can_adopt_existing_backfill(store):
+            skip_backfill = True
+            skipped_existing = True
+            self._write_bootstrap_state(bootstrap_state_path, mode="adopted")
+        else:
+            skip_backfill = False
 
-        if "claude" in self.config.clients:
-            self._log("Backfilling Claude history/transcripts/project index")
-            summaries["claude"] = ClaudeSyncService(store).sync(
-                history_path=self.config.claude_history_path,
-                transcripts_root=self.config.claude_transcripts_root,
-                projects_root=self.config.claude_projects_root,
-                workspace_root=self.workspace_root,
-                project_id=self.project_id,
-                force_project_id=True,
-            )
+        if skip_backfill:
+            self._log("Skipping historical backfill; workspace data is already initialized")
+            for client in self.config.clients:
+                summaries[client] = {
+                    "skipped": True,
+                    "reason": "historical backfill already completed for this workspace",
+                }
+        else:
+            if "claude" in self.config.clients:
+                self._log("Backfilling Claude history/transcripts/project index")
+                summaries["claude"] = ClaudeSyncService(store).sync(
+                    history_path=self.config.claude_history_path,
+                    transcripts_root=self.config.claude_transcripts_root,
+                    projects_root=self.config.claude_projects_root,
+                    workspace_root=self.workspace_root,
+                    project_id=self.project_id,
+                    force_project_id=True,
+                )
+            if "codex" in self.config.clients:
+                self._log("Backfilling Codex history and transcripts")
+                summaries["codex"] = CodexSyncService(store).sync(
+                    history_path=self.config.codex_history_path,
+                    sessions_root=self.config.codex_sessions_root,
+                    workspace_root=self.workspace_root,
+                    project_id=self.project_id,
+                    force_project_id=True,
+                )
 
-        if "codex" in self.config.clients:
-            self._log("Backfilling Codex history and transcripts")
-            summaries["codex"] = CodexSyncService(store).sync(
-                history_path=self.config.codex_history_path,
-                sessions_root=self.config.codex_sessions_root,
-                workspace_root=self.workspace_root,
-                project_id=self.project_id,
-                force_project_id=True,
-            )
-
-        if "opencode" in self.config.clients:
-            self._log("Backfilling OpenCode sessions")
-            if self.config.opencode_storage_roots:
-                session_ids = list_storage_session_ids(storage_roots=self.config.opencode_storage_roots)
-            else:
-                session_ids = list_opencode_session_ids(storage_roots=default_storage_roots())
-            summaries["opencode"] = OpenCodeSyncService(store).sync(
-                session_ids=session_ids,
-                project_id=self.project_id,
-                storage_roots=self.config.opencode_storage_roots,
-                workspace_root=self.workspace_root,
-                force_project_id=True,
-            )
-            summaries["opencode"]["discovered_session_ids"] = len(session_ids)
+            if "opencode" in self.config.clients:
+                self._log("Backfilling OpenCode sessions")
+                storage_roots = self.config.opencode_storage_roots or tuple(default_storage_roots())
+                if storage_roots:
+                    session_ids = list_storage_session_ids_for_workspace(
+                        self.workspace_root,
+                        storage_roots=storage_roots,
+                    )
+                else:
+                    session_ids = list_opencode_session_ids(storage_roots=default_storage_roots())
+                summaries["opencode"] = OpenCodeSyncService(store).sync(
+                    session_ids=session_ids,
+                    project_id=self.project_id,
+                    storage_roots=storage_roots,
+                    workspace_root=self.workspace_root,
+                    force_project_id=True,
+                )
+                summaries["opencode"]["discovered_session_ids"] = len(session_ids)
+            performed_backfill = True
+            self._write_bootstrap_state(bootstrap_state_path, mode="completed")
 
         sidecar_summary: dict[str, Any] | None = None
         if self.config.rebuild_sidecar:
@@ -125,6 +154,12 @@ class BootstrapService:
             "steps": summaries,
             "sidecar": sidecar_summary,
             "counts": counts,
+            "bootstrap_state": {
+                "path": str(bootstrap_state_path),
+                "performed_backfill": performed_backfill,
+                "skipped_existing": skipped_existing,
+                "exists": bootstrap_state_path.exists(),
+            },
         }
 
     def _counts(self, db_path: Path) -> dict[str, Any]:
@@ -146,10 +181,54 @@ class BootstrapService:
     def _log(self, message: str) -> None:
         print(f"[anamnesis-bootstrap] {message}", file=sys.stderr)
 
+    def _bootstrap_state_ready(self, path: Path) -> bool:
+        if not path.exists():
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        return (
+            data.get("workspace_root") == str(self.workspace_root)
+            and data.get("project_id") == self.project_id
+            and data.get("db_path") == str(self.config.db_path)
+            and data.get("status") in {"completed", "adopted"}
+        )
+
+    def _can_adopt_existing_backfill(self, store: RawMemoryStore) -> bool:
+        requested = set(self.config.clients)
+        if not requested:
+            return False
+        rows = store.fetchall(
+            """
+            SELECT agent, COUNT(*)
+            FROM events
+            WHERE project_id = ?
+            GROUP BY agent
+            """,
+            (self.project_id,),
+        )
+        present = {str(agent) for agent, count in rows if int(count) > 0}
+        return requested.issubset(present)
+
+    def _write_bootstrap_state(self, path: Path, *, mode: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "status": mode,
+            "workspace_root": str(self.workspace_root),
+            "project_id": self.project_id,
+            "db_path": str(self.config.db_path),
+            "clients": list(self.config.clients),
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Initialize a workspace, import all local Claude/Codex/OpenCode history for that workspace, and rebuild the UQA sidecar."
+        description=(
+            "Initialize a workspace and backfill local Claude/Codex/OpenCode history for it. "
+            "Repeated runs reuse the existing workspace bootstrap state unless --refresh-backfill is given."
+        )
     )
     parser.add_argument("--workspace-root", default=".")
     parser.add_argument("--python-executable", default=sys.executable)
@@ -158,6 +237,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex-home", default=str(Path.home() / ".codex"))
     parser.add_argument("--skip-register-codex", action="store_true")
     parser.add_argument("--skip-sidecar-rebuild", action="store_true")
+    parser.add_argument("--refresh-backfill", action="store_true")
     parser.add_argument("--claude-history", default=str(Path.home() / ".claude" / "history.jsonl"))
     parser.add_argument("--claude-transcripts-root", default=str(Path.home() / ".claude" / "transcripts"))
     parser.add_argument("--claude-projects-root", default=str(Path.home() / ".claude" / "projects"))
@@ -186,6 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         codex_home=Path(args.codex_home).expanduser().resolve(),
         register_codex=not args.skip_register_codex,
         rebuild_sidecar=not args.skip_sidecar_rebuild,
+        refresh_backfill=args.refresh_backfill,
         claude_history_path=Path(args.claude_history).expanduser().resolve(),
         claude_transcripts_root=Path(args.claude_transcripts_root).expanduser().resolve(),
         claude_projects_root=Path(args.claude_projects_root).expanduser().resolve(),

@@ -12,6 +12,7 @@ from anamnesis.opencode_sync import (
     OpenCodeSyncService,
     list_opencode_session_ids,
     list_storage_session_ids,
+    list_storage_session_ids_for_workspace,
     parse_export_text,
 )
 from anamnesis.storage import RawMemoryStore
@@ -146,6 +147,23 @@ class OpenCodeSyncTests(unittest.TestCase):
             ids = list_opencode_session_ids(storage_roots=[self.storage_root])
         self.assertEqual(ids, [session_id])
         self.assertEqual(list_storage_session_ids(storage_roots=[self.storage_root]), [session_id])
+
+    def test_list_storage_session_ids_for_workspace_filters_on_directory(self) -> None:
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        matching = json.loads(json.dumps(SAMPLE_EXPORT))
+        matching["info"]["id"] = "ses_match"
+        matching["info"]["directory"] = str(workspace)
+        matching["info"]["projectID"] = "project-match"
+        other = json.loads(json.dumps(SAMPLE_EXPORT))
+        other["info"]["id"] = "ses_other"
+        other["info"]["directory"] = str(self.root / "other")
+        other["info"]["projectID"] = "project-other"
+        self._write_storage_session(matching)
+        self._write_storage_session(other)
+
+        ids = list_storage_session_ids_for_workspace(workspace, storage_roots=[self.storage_root])
+        self.assertEqual(ids, ["ses_match"])
 
     def test_sync_imports_export_file(self) -> None:
         self.export_path.write_text(json.dumps(SAMPLE_EXPORT), encoding="utf-8")

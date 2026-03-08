@@ -183,6 +183,42 @@ class CodexSyncTests(unittest.TestCase):
         db.close()
         self.assertEqual(projects, [(str(workspace.resolve()),)])
 
+    def test_sync_uses_history_matched_session_ids_to_avoid_irrelevant_full_scan(self) -> None:
+        workspace = self.root / "workspace"
+        workspace.mkdir()
+        self.history_path.write_text(
+            json.dumps({"session_id": "match", "ts": 1754609319, "text": f"open {workspace / 'src/app.py'}"}) + "\n",
+            encoding="utf-8",
+        )
+        (self.sessions_root / "rollout-match.json").write_text(
+            json.dumps(
+                {
+                    "session": {"id": "match", "timestamp": "2025-04-17T04:15:33.119Z"},
+                    "items": [
+                        {
+                            "type": "function_call",
+                            "call_id": "call-1",
+                            "name": "shell",
+                            "arguments": json.dumps({"file_path": str(workspace / "src/app.py")}),
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.sessions_root / "rollout-other.json").write_text("{not-json", encoding="utf-8")
+
+        summary = CodexSyncService(RawMemoryStore(self.db_path)).sync(
+            history_path=self.history_path,
+            sessions_root=self.sessions_root,
+            workspace_root=workspace,
+            project_id=str(workspace.resolve()),
+            force_project_id=True,
+        )
+
+        self.assertEqual(summary["history"]["payloads"], 1)
+        self.assertEqual(summary["sessions"]["payloads"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

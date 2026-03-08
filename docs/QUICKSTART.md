@@ -32,7 +32,7 @@ That one command will:
 - backfill matching Claude history / transcripts / project index
 - backfill matching Codex history / sessions
 - backfill matching OpenCode sessions
-- rebuild the mandatory UQA sidecar
+- leave sidecar rebuild for an explicit follow-up step so bootstrap returns quickly
 
 If you are already inside the Anamnesis repo, the equivalent shortcut is:
 
@@ -40,11 +40,24 @@ If you are already inside the Anamnesis repo, the equivalent shortcut is:
 make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
 ```
 
-If the first full sidecar build is too slow for your immediate workflow, use the fast path:
+If you run `make bootstrap` again for the same workspace, Anamnesis now reuses the recorded bootstrap state and skips the expensive historical rescan unless you explicitly refresh it.
+
+Then rebuild the mandatory UQA sidecar explicitly when you want full query coverage:
 
 ```bash
-make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
 make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+If you really want the full blocking rebuild in one step:
+
+```bash
+make bootstrap-full WORKSPACE_ROOT=~/Desktop/work/pylon
+```
+
+To force a full historical rescan for the workspace:
+
+```bash
+uv run anamnesis-bootstrap --workspace-root ~/Desktop/work/pylon --skip-sidecar-rebuild --refresh-backfill
 ```
 
 ## 3. Initialize client config only

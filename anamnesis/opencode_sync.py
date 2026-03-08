@@ -43,6 +43,36 @@ def list_storage_session_ids(*, storage_roots: Sequence[str | Path] = (), limit:
     return session_ids
 
 
+def list_storage_session_ids_for_workspace(
+    workspace_root: str | Path,
+    *,
+    storage_roots: Sequence[str | Path] = (),
+    limit: int | None = None,
+) -> list[str]:
+    session_ids: list[str] = []
+    seen: set[str] = set()
+    scope = normalize_workspace_root(workspace_root)
+    for root in _resolved_storage_roots(storage_roots):
+        session_dir = root / "session"
+        if not session_dir.exists():
+            continue
+        for path in sorted(session_dir.rglob("ses_*.json")):
+            info = _safe_load_json(path, [], kind="session")
+            if not isinstance(info, dict):
+                continue
+            directory = info.get("directory") or info.get("cwd") or info.get("projectPath")
+            if not payload_mentions_workspace({"directory": directory}, scope):
+                continue
+            session_id = str(info.get("id") or path.stem)
+            if session_id in seen:
+                continue
+            seen.add(session_id)
+            session_ids.append(session_id)
+            if limit is not None and len(session_ids) >= limit:
+                return session_ids
+    return session_ids
+
+
 def list_opencode_session_ids(*, limit: int | None = None, storage_roots: Sequence[str | Path] = ()) -> list[str]:
     try:
         result = subprocess.run(

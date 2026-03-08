@@ -59,7 +59,7 @@ class DeployabilityTests(unittest.TestCase):
     def test_cli_modules_expose_help(self) -> None:
         commands = [
             (["-m", "anamnesis", "--help"], "Anamnesis — searchable shared memory for Claude, Codex, and OpenCode."),
-            (["-m", "anamnesis.bootstrap", "--help"], "Initialize a workspace, import all local Claude/Codex/OpenCode history"),
+            (["-m", "anamnesis.bootstrap", "--help"], "Initialize a workspace and backfill local Claude/Codex/OpenCode history"),
             (["-m", "anamnesis.init_cli", "--help"], "Write deployable Claude/Codex/OpenCode configuration for Anamnesis"),
             (["-m", "anamnesis.ingest", "--help"], "Normalize agent hook payloads"),
             (["-m", "anamnesis.claude_sync", "--help"], "Backfill Claude Code history"),

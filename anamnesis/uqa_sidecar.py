@@ -9,6 +9,7 @@ import json
 import os
 import shlex
 import sqlite3
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -18,6 +19,18 @@ from .local_imports import import_uqa_engine
 
 
 EMBEDDING_DIMENSIONS = 64
+BULK_LOAD_TABLES: tuple[str, ...] = (
+    "projects",
+    "sessions",
+    "files",
+    "file_aliases",
+    "file_lineage",
+    "events",
+    "tool_runs",
+    "session_links",
+    "touch_activity",
+    "graph_edges",
+)
 
 PUBLIC_MACROS = [
     "survey",
@@ -79,6 +92,8 @@ class UQASidecar:
         return True, None
 
     def health(self) -> dict[str, Any]:
+        if self._is_stale():
+            return self._pending_health()
         self.ensure_ready()
         raw_counts = self._raw_counts()
         with self.engine() as engine:
@@ -113,50 +128,56 @@ class UQASidecar:
     def rebuild(self) -> dict[str, Any]:
         if not self.raw_db_path.exists():
             raise FileNotFoundError(f"raw database does not exist: {self.raw_db_path}")
-        existed_before = self.sidecar_path.exists()
-        model = self._build_materialized_model(*self._read_raw_rows())
-        engine_cls = self._engine_class()
-        self.sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.sidecar_path.with_name(f".{self.sidecar_path.name}.tmp-{os.getpid()}-{uuid4().hex}")
-        if temp_path.exists():
-            temp_path.unlink()
-        engine = engine_cls(db_path=str(temp_path), vector_dimensions=EMBEDDING_DIMENSIONS)
-        try:
-            for statement in self._schema_sql():
-                engine.sql(statement)
-            self._insert_rows(engine, "projects", model["projects"])
-            self._insert_rows(engine, "sessions", model["sessions"])
-            self._insert_rows(engine, "files", model["files"])
-            self._insert_rows(engine, "file_aliases", model["file_aliases"])
-            self._insert_rows(engine, "file_lineage", model["file_lineage"])
-            self._insert_rows(engine, "events", model["events"])
-            self._insert_rows(engine, "tool_runs", model["tool_runs"])
-            self._insert_rows(engine, "session_links", model["session_links"])
-            self._insert_rows(engine, "touch_activity", model["touch_activity"])
-            self._insert_rows(engine, "search_docs", model["search_docs"])
-            self._insert_rows(engine, "graph_edges", model["graph_edges"])
-            self._materialize_vectors(engine, model["search_docs"])
-            self._materialize_graph(engine, model["vertices"], model["edges"])
-            for statement in (
-                "ANALYZE projects",
-                "ANALYZE sessions",
-                "ANALYZE files",
-                "ANALYZE file_aliases",
-                "ANALYZE file_lineage",
-                "ANALYZE events",
-                "ANALYZE tool_runs",
-                "ANALYZE session_links",
-                "ANALYZE touch_activity",
-                "ANALYZE search_docs",
-                "ANALYZE graph_edges",
-            ):
-                try:
+        with self._rebuild_lock():
+            existed_before = self.sidecar_path.exists()
+            model = self._build_materialized_model(*self._read_raw_rows())
+            engine_cls = self._engine_class()
+            self.sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+            self._cleanup_temp_sidecars()
+            temp_path = self.sidecar_path.with_name(f".{self.sidecar_path.name}.tmp-{os.getpid()}-{uuid4().hex}")
+            if temp_path.exists():
+                temp_path.unlink()
+
+            engine = engine_cls(db_path=str(temp_path), vector_dimensions=EMBEDDING_DIMENSIONS)
+            try:
+                for statement in self._schema_sql():
                     engine.sql(statement)
-                except Exception:
-                    pass
-        finally:
-            engine.close()
-        temp_path.replace(self.sidecar_path)
+            finally:
+                engine.close()
+
+            self._bulk_insert_data_tables(
+                temp_path,
+                {
+                    table: model[table]
+                    for table in BULK_LOAD_TABLES
+                },
+            )
+
+            engine = engine_cls(db_path=str(temp_path), vector_dimensions=EMBEDDING_DIMENSIONS)
+            try:
+                self._insert_rows(engine, "search_docs", model["search_docs"])
+                self._materialize_vectors(engine, model["search_docs"])
+                self._materialize_graph(engine, model["vertices"], model["edges"])
+                for statement in (
+                    "ANALYZE projects",
+                    "ANALYZE sessions",
+                    "ANALYZE files",
+                    "ANALYZE file_aliases",
+                    "ANALYZE file_lineage",
+                    "ANALYZE events",
+                    "ANALYZE tool_runs",
+                    "ANALYZE session_links",
+                    "ANALYZE touch_activity",
+                    "ANALYZE search_docs",
+                    "ANALYZE graph_edges",
+                ):
+                    try:
+                        engine.sql(statement)
+                    except Exception:
+                        pass
+            finally:
+                engine.close()
+            temp_path.replace(self.sidecar_path)
         return {
             "raw_db_path": str(self.raw_db_path),
             "sidecar_path": str(self.sidecar_path),
@@ -185,6 +206,8 @@ class UQASidecar:
             self.rebuild()
 
     def orient(self, project_id: str | None = None) -> dict[str, Any]:
+        if self._is_stale():
+            return self._pending_orient(project_id)
         self.ensure_ready()
         with self.engine() as engine:
             filters = ["1 = 1"]
@@ -255,6 +278,72 @@ class UQASidecar:
                 "search",
                 "sql",
             ],
+        }
+
+    def _pending_orient(self, project_id: str | None = None) -> dict[str, Any]:
+        snapshot = self._raw_orient_snapshot(project_id)
+        return {
+            "backend": "uqa",
+            "project_id": project_id,
+            "tables": [obj["name"] for obj in self._logical_objects()],
+            "objects": self._logical_objects(),
+            "counts": snapshot["counts"],
+            "window": snapshot["window"],
+            "agents": snapshot["agents"],
+            "graph": {"vertices": 0, "edges": 0},
+            "vectors": 0,
+            "uqa": {
+                **self.status(),
+                "rebuild_required": True,
+                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+            },
+            "macros": list(PUBLIC_MACROS),
+            "operations": [
+                "survey",
+                "synopsis",
+                "artifact",
+                "chronicle",
+                "cadence",
+                "lineage",
+                "crossroads",
+                "relay",
+                "thesis",
+                "vitals",
+                "search",
+                "sql",
+            ],
+        }
+
+    def _pending_health(self) -> dict[str, Any]:
+        raw_counts = self._raw_counts()
+        return {
+            "backend": "uqa",
+            "status": {
+                **self.status(),
+                "rebuild_required": True,
+                "rebuild_in_progress": self._rebuild_lock_path().exists(),
+            },
+            "raw": raw_counts,
+            "sidecar": {
+                "projects": 0,
+                "sessions": 0,
+                "events": 0,
+                "files": 0,
+                "file_aliases": 0,
+                "file_lineage": 0,
+                "tool_runs": 0,
+                "session_links": 0,
+                "touch_activity": 0,
+                "search_docs": 0,
+                "graph_edges": 0,
+            },
+            "graph": {"vertices": 0, "edges": 0},
+            "vectors": 0,
+            "coverage": {
+                "vectorized_docs": 0,
+                "graph_vertices": 0,
+                "graph_edges": 0,
+            },
         }
 
     def search(
@@ -1119,7 +1208,19 @@ class UQASidecar:
             return False
         if not self.sidecar_path.exists():
             return True
-        return self.sidecar_path.stat().st_mtime < self.raw_db_path.stat().st_mtime
+        if self.sidecar_path.stat().st_mtime < self.raw_db_path.stat().st_mtime:
+            return True
+        raw_counts = self._raw_counts()
+        if raw_counts["events"] == 0 and raw_counts["sessions"] == 0 and raw_counts["file_touches"] == 0:
+            return False
+        sidecar_counts = self._sidecar_baseline_counts()
+        if sidecar_counts is None:
+            return True
+        return (
+            sidecar_counts["events"] != raw_counts["events"]
+            or sidecar_counts["sessions"] != raw_counts["sessions"]
+            or sidecar_counts["touch_activity"] != raw_counts["file_touches"]
+        )
 
     def _engine_class(self):
         ensure_repo_on_syspath(self.repo_root)
@@ -2200,6 +2301,88 @@ class UQASidecar:
                 values.append("(" + ", ".join(_quote(row.get(column)) for column in columns) + ")")
             engine.sql(f"INSERT INTO {table} ({', '.join(columns)}) VALUES " + ", ".join(values))
 
+    def _bulk_insert_data_tables(self, path: Path, tables: dict[str, list[dict[str, Any]]]) -> None:
+        if not tables:
+            return
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("PRAGMA synchronous=OFF")
+            db.execute("PRAGMA journal_mode=WAL")
+            for table, rows in tables.items():
+                if not rows:
+                    continue
+                columns = list(rows[0].keys())
+                placeholders = ", ".join("?" for _ in columns)
+                db.executemany(
+                    f"INSERT INTO _data_{table} ({', '.join(columns)}) VALUES ({placeholders})",
+                    [[row.get(column) for column in columns] for row in rows],
+                )
+            db.commit()
+
+    def _cleanup_temp_sidecars(self) -> None:
+        prefix = f".{self.sidecar_path.name}.tmp-"
+        for path in self.sidecar_path.parent.glob(f"{prefix}*"):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            except IsADirectoryError:
+                continue
+
+    def _rebuild_lock_path(self) -> Path:
+        return self.sidecar_path.with_name(f".{self.sidecar_path.name}.lock")
+
+    def _rebuild_lock(self, *, timeout_seconds: float = 300.0, poll_seconds: float = 0.25):
+        class _Lock:
+            def __init__(self, owner: "UQASidecar", timeout: float, poll: float):
+                self.owner = owner
+                self.timeout = timeout
+                self.poll = poll
+                self.fd: int | None = None
+
+            def __enter__(self):
+                deadline = time.monotonic() + self.timeout
+                lock_path = self.owner._rebuild_lock_path()
+                while True:
+                    try:
+                        self.fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                        os.write(self.fd, str(os.getpid()).encode("utf-8"))
+                        return self
+                    except FileExistsError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError(f"Timed out waiting for sidecar rebuild lock: {lock_path}") from None
+                        time.sleep(self.poll)
+
+            def __exit__(self, exc_type, exc, tb):
+                lock_path = self.owner._rebuild_lock_path()
+                if self.fd is not None:
+                    os.close(self.fd)
+                try:
+                    lock_path.unlink()
+                except FileNotFoundError:
+                    pass
+                return False
+
+        return _Lock(self, timeout_seconds, poll_seconds)
+
+    def _sidecar_baseline_counts(self) -> dict[str, int] | None:
+        if not self.sidecar_path.exists():
+            return None
+        try:
+            with closing(sqlite3.connect(self.sidecar_path)) as db:
+                names = {
+                    row[0]
+                    for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                }
+                if "_data_events" not in names or "_data_sessions" not in names or "_data_touch_activity" not in names:
+                    return None
+                return {
+                    "events": int(db.execute("SELECT COUNT(*) FROM _data_events").fetchone()[0]),
+                    "sessions": int(db.execute("SELECT COUNT(*) FROM _data_sessions").fetchone()[0]),
+                    "touch_activity": int(db.execute("SELECT COUNT(*) FROM _data_touch_activity").fetchone()[0]),
+                }
+        except sqlite3.DatabaseError:
+            return None
+
     def _execute(self, engine: Any, sql: str, *, query_vector: Any | None = None):
         if query_vector is None:
             return engine.sql(sql)
@@ -2260,6 +2443,121 @@ class UQASidecar:
             vertices = int(db.execute("SELECT COUNT(*) FROM _graph_vertices").fetchone()[0]) if "_graph_vertices" in names else 0
             edges = int(db.execute("SELECT COUNT(*) FROM _graph_edges").fetchone()[0]) if "_graph_edges" in names else 0
         return {"vertices": vertices, "edges": edges}
+
+    def _logical_objects(self) -> list[dict[str, Any]]:
+        objects: list[dict[str, Any]] = []
+        for statement in self._schema_sql():
+            normalized = statement.strip()
+            if not normalized.startswith("CREATE TABLE "):
+                continue
+            name = normalized.removeprefix("CREATE TABLE ").split("(", 1)[0].strip()
+            body = normalized.split("(", 1)[1].rsplit(")", 1)[0]
+            columns = []
+            for raw_column in body.split(", "):
+                parts = raw_column.strip().split()
+                if len(parts) < 2:
+                    continue
+                columns.append(
+                    {
+                        "name": parts[0],
+                        "type": parts[1].lower(),
+                        "primary_key": "PRIMARY KEY" in raw_column.upper(),
+                        "not_null": "NOT NULL" in raw_column.upper(),
+                    }
+                )
+            objects.append({"name": name, "kind": "table", "columns": columns})
+        return objects
+
+    def _raw_orient_snapshot(self, project_id: str | None = None) -> dict[str, Any]:
+        if not self.raw_db_path.exists():
+            return {
+                "counts": {
+                    "projects": 0,
+                    "sessions": 0,
+                    "events": 0,
+                    "files": 0,
+                    "file_aliases": 0,
+                    "file_lineage": 0,
+                    "tool_runs": 0,
+                    "session_links": 0,
+                    "touch_activity": 0,
+                    "search_docs": 0,
+                    "graph_edges": 0,
+                },
+                "window": {"first_ts": None, "last_ts": None},
+                "agents": [],
+            }
+        with closing(sqlite3.connect(self.raw_db_path)) as db:
+            project_filter = "WHERE project_id = ?" if project_id else ""
+            project_params: tuple[Any, ...] = (project_id,) if project_id else ()
+            counts = {
+                "projects": int(
+                    db.execute(
+                        f"SELECT COUNT(DISTINCT project_id) FROM sessions {project_filter}",
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "sessions": int(
+                    db.execute(
+                        f"SELECT COUNT(*) FROM sessions {project_filter}",
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "events": int(
+                    db.execute(
+                        f"SELECT COUNT(*) FROM events {project_filter}",
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "files": int(
+                    db.execute(
+                        "SELECT COUNT(DISTINCT ft.path) "
+                        "FROM file_touches ft "
+                        "JOIN events e ON e.id = ft.event_id "
+                        + ("WHERE e.project_id = ?" if project_id else ""),
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "file_aliases": 0,
+                "file_lineage": 0,
+                "tool_runs": int(
+                    db.execute(
+                        "SELECT COUNT(*) FROM events WHERE kind IN ('tool_call', 'tool_result')"
+                        + (" AND project_id = ?" if project_id else ""),
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "session_links": 0,
+                "touch_activity": int(
+                    db.execute(
+                        "SELECT COUNT(*) "
+                        "FROM file_touches ft "
+                        "JOIN events e ON e.id = ft.event_id "
+                        + ("WHERE e.project_id = ?" if project_id else ""),
+                        project_params,
+                    ).fetchone()[0]
+                ),
+                "search_docs": 0,
+                "graph_edges": 0,
+            }
+            window_row = db.execute(
+                "SELECT MIN(ts), MAX(ts) FROM events " + project_filter,
+                project_params,
+            ).fetchone()
+            agents = [
+                {"agent": agent, "event_count": int(event_count)}
+                for agent, event_count in db.execute(
+                    "SELECT agent, COUNT(*) FROM events "
+                    + project_filter
+                    + " GROUP BY agent ORDER BY COUNT(*) DESC",
+                    project_params,
+                ).fetchall()
+            ]
+        return {
+            "counts": counts,
+            "window": {"first_ts": window_row[0], "last_ts": window_row[1]},
+            "agents": agents,
+        }
 
     def _raw_counts(self) -> dict[str, int]:
         if not self.raw_db_path.exists():

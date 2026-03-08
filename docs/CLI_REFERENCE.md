@@ -9,6 +9,7 @@ make help
 make install
 make init
 make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
+make bootstrap-full WORKSPACE_ROOT=~/Desktop/work/pylon
 make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
 make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
 make test
@@ -65,7 +66,15 @@ The public macro vocabulary is:
 
 ## `anamnesis-bootstrap`
 
-Initialize a repo, backfill all matching local Claude/Codex/OpenCode history, and rebuild the UQA sidecar.
+Initialize a repo and backfill all matching local Claude/Codex/OpenCode history.
+
+```bash
+uv run anamnesis-bootstrap --workspace-root "$PWD" --skip-sidecar-rebuild
+```
+
+Repeated runs reuse `.anamnesis/bootstrap-state.json` and skip the historical rescan when the workspace has already been imported.
+
+If you want the full blocking rebuild in one step:
 
 ```bash
 uv run anamnesis-bootstrap --workspace-root "$PWD"
@@ -74,6 +83,7 @@ uv run anamnesis-bootstrap --workspace-root "$PWD"
 Useful flag when you want ingestion first and indexing later:
 
 - `--skip-sidecar-rebuild`
+- `--refresh-backfill`
 
 Example:
 

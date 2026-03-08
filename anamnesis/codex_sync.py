@@ -80,7 +80,7 @@ def iter_codex_session_payloads(
     if not sessions_root.exists():
         return
 
-    for path in sorted(sessions_root.rglob("*.json")):
+    for path in _candidate_session_paths(sessions_root, matched_session_ids):
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             continue
@@ -131,6 +131,22 @@ def iter_codex_session_payloads(
                 if linked:
                     payload.update({k: v for k, v in linked.items() if v not in (None, "", {})})
             yield payload
+
+
+def _candidate_session_paths(sessions_root: Path, matched_session_ids: set[str]) -> list[Path]:
+    if not matched_session_ids:
+        return sorted(sessions_root.rglob("*.json"))
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+    for session_id in sorted(matched_session_ids):
+        for path in sessions_root.glob(f"*{session_id}.json"):
+            if path not in seen:
+                seen.add(path)
+                candidates.append(path)
+                break
+    if candidates and len(candidates) >= len(matched_session_ids):
+        return candidates
+    return sorted(sessions_root.rglob("*.json"))
 
 
 def _maybe_json(value: Any) -> Any:

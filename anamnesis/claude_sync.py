@@ -155,6 +155,7 @@ class ClaudeSyncService:
                 "failures": [],
             },
         }
+        matched_session_ids: set[str] = set()
 
         if include_history:
             summary["history"] = {
@@ -165,7 +166,8 @@ class ClaudeSyncService:
                         workspace_root=workspace_root,
                         project_id=canonical_project_id,
                         force_project_id=force_project_id,
-                    )
+                    ),
+                    matched_session_ids=matched_session_ids,
                 ),
             }
 
@@ -178,7 +180,8 @@ class ClaudeSyncService:
                         workspace_root=workspace_root,
                         project_id=canonical_project_id,
                         force_project_id=force_project_id,
-                    )
+                    ),
+                    matched_session_ids=matched_session_ids,
                 ),
             }
 
@@ -188,17 +191,27 @@ class ClaudeSyncService:
                 workspace_root=workspace_root,
                 project_id=canonical_project_id,
                 force_project_id=force_project_id,
+                matched_session_ids=matched_session_ids,
             )
 
         return summary
 
-    def _ingest_payloads(self, payloads: Iterable[dict[str, Any]]) -> dict[str, int]:
+    def _ingest_payloads(
+        self,
+        payloads: Iterable[dict[str, Any]],
+        *,
+        matched_session_ids: set[str] | None = None,
+    ) -> dict[str, int]:
         adapter = get_adapter("claude")
         payload_count = 0
         event_count = 0
         batch: list[dict[str, Any]] = []
         for payload in payloads:
             payload_count += 1
+            if matched_session_ids is not None:
+                session_id = payload.get("session_id") or payload.get("sessionId") or payload.get("session")
+                if isinstance(session_id, str) and session_id.strip():
+                    matched_session_ids.add(session_id)
             batch.append(payload)
             if len(batch) >= self.batch_size:
                 result = self.store.append_payloads(adapter, batch)
@@ -216,6 +229,7 @@ class ClaudeSyncService:
         workspace_root: str | Path | None = None,
         project_id: str | None = None,
         force_project_id: bool = False,
+        matched_session_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         root = Path(transcripts_root or _default_transcripts_root()).expanduser()
         scope = normalize_workspace_root(workspace_root) if workspace_root else None
@@ -236,7 +250,8 @@ class ClaudeSyncService:
                 "failures": [],
             }
 
-        for path in sorted(root.rglob("*.jsonl")):
+        paths = _transcript_paths(root, matched_session_ids)
+        for path in paths:
             file_count += 1
             payloads: list[dict[str, Any]] = []
             matched = scope is None
@@ -294,6 +309,27 @@ class ClaudeSyncService:
             "events": event_count,
             "failures": failures,
         }
+
+
+def _transcript_paths(root: Path, matched_session_ids: set[str] | None) -> list[Path]:
+    if not matched_session_ids:
+        return sorted(root.rglob("*.jsonl"))
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+    for session_id in sorted(matched_session_ids):
+        direct = root / f"{session_id}.jsonl"
+        if direct.exists() and direct not in seen:
+            seen.add(direct)
+            candidates.append(direct)
+            continue
+        for path in root.rglob(f"{session_id}.jsonl"):
+            if path not in seen:
+                seen.add(path)
+                candidates.append(path)
+                break
+    if candidates and len(candidates) >= len(matched_session_ids):
+        return candidates
+    return sorted(root.rglob("*.jsonl"))
 
 
 def main() -> None:

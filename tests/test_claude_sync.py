@@ -143,6 +143,63 @@ class ClaudeSyncTests(unittest.TestCase):
         self.assertNotIn(("claude-transcript:ses_other",), {(row[1],) for row in rows})
         self.assertEqual(touches, [(str(self.workspace / "README.md"), "touch")])
 
+    def test_sync_uses_project_session_ids_to_target_transcript_files(self) -> None:
+        self.history_path.write_text(
+            json.dumps(
+                {
+                    "display": "inspect README",
+                    "timestamp": 1759167412041,
+                    "project": str(self.workspace),
+                    "sessionId": "ses_match",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        slug_dir = self.projects_root / str(self.workspace.resolve()).replace("/", "-")
+        slug_dir.mkdir(parents=True)
+        (slug_dir / "sessions-index.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": [
+                        {
+                            "sessionId": "ses_match",
+                            "projectPath": str(self.workspace),
+                            "created": "2026-03-08T00:00:00Z",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (self.transcripts_root / "ses_match.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "tool_use",
+                    "timestamp": "2026-03-08T00:02:10Z",
+                    "tool_name": "read",
+                    "tool_input": {"filePath": str(self.workspace / "README.md")},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (self.transcripts_root / "ses_other.jsonl").write_text("{not-json\n", encoding="utf-8")
+
+        summary = ClaudeSyncService(RawMemoryStore(self.db_path)).sync(
+            history_path=self.history_path,
+            transcripts_root=self.transcripts_root,
+            projects_root=self.projects_root,
+            workspace_root=self.workspace,
+        )
+
+        self.assertEqual(summary["history"]["payloads"], 1)
+        self.assertEqual(summary["project_index"]["payloads"], 1)
+        self.assertEqual(summary["transcripts"]["matched_files"], 1)
+        self.assertEqual(summary["transcripts"]["failures"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

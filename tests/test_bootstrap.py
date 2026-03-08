@@ -65,6 +65,37 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(set(summary["counts"]["agents"]), {"claude", "codex", "opencode"})
         self.assertGreaterEqual(summary["counts"]["events"], 6)
 
+    def test_bootstrap_skips_repeat_backfill_when_workspace_is_already_initialized(self) -> None:
+        self._write_claude_sources()
+        self._write_codex_sources()
+        self._write_opencode_storage()
+
+        config = BootstrapConfig(
+            workspace_root=self.workspace,
+            python_executable="/usr/bin/python3",
+            db_path=self.db_path,
+            codex_home=self.codex_home,
+            register_codex=False,
+            rebuild_sidecar=False,
+            claude_history_path=self.claude_history,
+            claude_transcripts_root=self.claude_transcripts,
+            claude_projects_root=self.claude_projects,
+            codex_history_path=self.codex_history,
+            codex_sessions_root=self.codex_sessions,
+            opencode_storage_roots=(self.opencode_storage,),
+            uqa_repo_root=REPO_ROOT / "uqa",
+        )
+
+        first = BootstrapService(config).run()
+        second = BootstrapService(config).run()
+
+        self.assertGreaterEqual(first["counts"]["events"], 6)
+        self.assertFalse(first["bootstrap_state"]["skipped_existing"])
+        self.assertTrue(second["bootstrap_state"]["skipped_existing"])
+        self.assertEqual(second["steps"]["claude"]["skipped"], True)
+        self.assertEqual(second["steps"]["codex"]["skipped"], True)
+        self.assertEqual(second["steps"]["opencode"]["skipped"], True)
+
     def _write_claude_sources(self) -> None:
         self.claude_history.write_text(
             json.dumps(

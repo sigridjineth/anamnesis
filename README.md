@@ -39,7 +39,7 @@ uv sync --all-packages --group dev
 
 ## Quickstart
 
-First-time bootstrap for a repo (config + Claude/Codex/OpenCode backfill + UQA rebuild):
+First-time bootstrap for a repo (config + Claude/Codex/OpenCode backfill, without blocking on a full UQA rebuild):
 
 ```bash
 cd ~/Desktop/work/pylon
@@ -51,13 +51,15 @@ Or, from inside this repo:
 
 ```bash
 make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
+make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
 ```
 
-If you want the fast path first and can rebuild the sidecar later:
+Repeated `make bootstrap` runs are cheap: once a workspace has already been backfilled, Anamnesis records that state and skips the historical rescan unless you explicitly request a refresh.
+
+If you really want the full blocking rebuild in one step:
 
 ```bash
-make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
-make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+make bootstrap-full WORKSPACE_ROOT=~/Desktop/work/pylon
 ```
 
 Initialize local client config only:

@@ -1,11 +1,11 @@
 SHELL := /bin/bash
-UV ?= uv
+UV ?= env -u VIRTUAL_ENV uv
 WORKSPACE_ROOT ?= $(CURDIR)
 DB_PATH ?= $(WORKSPACE_ROOT)/.anamnesis/anamnesis.db
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-.PHONY: help install sync build test compile verify init bootstrap bootstrap-fast sidecar smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
+.PHONY: help install sync build test compile verify init bootstrap bootstrap-full bootstrap-fast sidecar smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-16s %s\n", $$1, $$2}'
@@ -34,7 +34,10 @@ verify: ## Run tests, compile checks, build, and release verification
 init: ## Generate local Claude/Codex/OpenCode config for this workspace
 	$(UV) run anamnesis-init --workspace-root "$(WORKSPACE_ROOT)"
 
-bootstrap: ## Initialize this workspace, import Claude/Codex/OpenCode history for it, and rebuild the UQA sidecar
+bootstrap: ## Fast bootstrap: initialize this workspace and import history without blocking on a full sidecar rebuild
+	$(UV) run anamnesis-bootstrap --workspace-root "$(WORKSPACE_ROOT)" --skip-sidecar-rebuild
+
+bootstrap-full: ## Initialize this workspace, import history, and rebuild the UQA sidecar synchronously
 	$(UV) run anamnesis-bootstrap --workspace-root "$(WORKSPACE_ROOT)"
 
 bootstrap-fast: ## Initialize this workspace and import history without rebuilding the UQA sidecar yet
