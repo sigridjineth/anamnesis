@@ -1,5 +1,5 @@
 ---
-name: genealogy
+name: lineage
 description: Trace a concept across sessions, files, and tool runs.
 argument-hint: [query]
 ---

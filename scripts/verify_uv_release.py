@@ -101,6 +101,39 @@ def smoke_ingest(venv_dir: Path) -> None:
         run([str(python_exe), "-c", query], capture_output=True)
 
 
+def smoke_init(venv_dir: Path) -> None:
+    init_exe = venv_executable(venv_dir, "anamnesis-init")
+
+    with tempfile.TemporaryDirectory(prefix="anamnesis-init-smoke-") as tmp:
+        workspace_root = Path(tmp) / "workspace"
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        codex_home = workspace_root / ".codex"
+        codex_home.mkdir(parents=True, exist_ok=True)
+        db_path = workspace_root / ".anamnesis" / "anamnesis.db"
+
+        run(
+            [
+                str(init_exe),
+                "--workspace-root",
+                str(workspace_root),
+                "--db-path",
+                str(db_path),
+                "--codex-home",
+                str(codex_home),
+            ]
+        )
+
+        expected_paths = [
+            workspace_root / ".claude" / "skills" / "survey" / "SKILL.md",
+            workspace_root / ".agents" / "skills" / "chronicle" / "SKILL.md",
+            workspace_root / ".mcp.json",
+            codex_home / "settings.json",
+        ]
+        missing = [str(path) for path in expected_paths if not path.exists()]
+        if missing:
+            raise AssertionError(f"anamnesis-init did not create expected files: {missing}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build UQA + Anamnesis release artifacts with uv and verify they install and run in a clean uv-managed virtualenv."
@@ -145,6 +178,7 @@ def main() -> int:
         verify_help(venv_executable(venv_dir, "anamnesis-opencode-sync"), "Backfill OpenCode exported sessions")
 
         smoke_ingest(venv_dir)
+        smoke_init(venv_dir)
 
         if args.with_mcp:
             run(["uv", "pip", "install", "--python", str(python_exe), "mcp>=1.0.0"])

@@ -78,20 +78,7 @@ class CliSurfaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "@thesis"):
             translate_query_text("@decision query=worker history")
 
-    def test_execute_query_syncs_projection_and_parses_runtime_json(self) -> None:
-        with (
-            patch("anamnesis.cli.ProjectedCellProjector.ensure_ready") as ensure_ready,
-            patch("anamnesis.preset_runtime.PresetRuntime.execute_cli_query", return_value='[{"session_id":"ses-1"}]') as execute_cli_query,
-        ):
-            result = execute_query("@chronicle session=ses-1", db_path=self.db_path, workspace_root=self.root)
-        ensure_ready.assert_called_once()
-        execute_cli_query.assert_called_once_with(
-            cell_name="claude_code",
-            query=f'{PUBLIC_PRESET_TO_RUNTIME["@chronicle"]} session=ses-1',
-        )
-        self.assertEqual(result[0]["session_id"], "ses-1")
-
-    def test_execute_query_text_preserves_exact_runtime_output(self) -> None:
+    def test_execute_query_text_preserves_exact_runtime_output_for_non_macro_queries(self) -> None:
         text = '{"error":"Not valid SQL: \\\"worker history\\\""}'
         with (
             patch("anamnesis.cli.ProjectedCellProjector.ensure_ready"),
@@ -100,18 +87,38 @@ class CliSurfaceTests(unittest.TestCase):
             result = execute_query_text("worker history", db_path=self.db_path, workspace_root=self.root)
         self.assertEqual(result, text)
 
-    def test_execute_mcp_text_delegates_to_runtime(self) -> None:
+    def test_execute_query_routes_chronicle_to_memory_service_without_runtime(self) -> None:
         with (
-            patch("anamnesis.cli.ProjectedCellProjector.ensure_ready"),
-            patch("anamnesis.preset_runtime.PresetRuntime.execute_mcp_query", return_value="[1 rows, ~1 tok]\n[]") as execute_mcp_query,
+            patch("anamnesis.cli.ProjectedCellProjector.ensure_ready") as ensure_ready,
+            patch(
+                "anamnesis.cli.MemoryService.story",
+                return_value={"session": {"session_id": "ses-1"}, "timeline": [], "results": []},
+            ) as story,
+            patch("anamnesis.preset_runtime.PresetRuntime.execute_cli_query") as execute_cli_query,
+        ):
+            result = execute_query("@chronicle session=ses-1", db_path=self.db_path, workspace_root=self.root)
+        ensure_ready.assert_not_called()
+        execute_cli_query.assert_not_called()
+        story.assert_called_once_with(
+            session_id="ses-1",
+            query=None,
+            db_path=str(self.db_path.resolve()),
+            limit=50,
+            project_id=None,
+        )
+        self.assertEqual(result["session"]["session_id"], "ses-1")
+
+    def test_execute_mcp_text_routes_survey_to_memory_service_without_runtime(self) -> None:
+        with (
+            patch("anamnesis.cli.ProjectedCellProjector.ensure_ready") as ensure_ready,
+            patch("anamnesis.cli.MemoryService.orient", return_value={"backend": "uqa", "macros": ["survey"]}) as orient,
+            patch("anamnesis.preset_runtime.PresetRuntime.execute_mcp_query") as execute_mcp_query,
         ):
             result = execute_mcp_query_text("@survey", db_path=self.db_path, workspace_root=self.root, params={"days": 7})
-        execute_mcp_query.assert_called_once_with(
-            cell_name="claude_code",
-            query=PUBLIC_PRESET_TO_RUNTIME["@survey"],
-            params={"days": 7},
-        )
-        self.assertEqual(result, "[1 rows, ~1 tok]\n[]")
+        ensure_ready.assert_not_called()
+        execute_mcp_query.assert_not_called()
+        orient.assert_called_once_with(db_path=str(self.db_path.resolve()), project_id=None)
+        self.assertEqual(json.loads(result)["macros"], ["survey"])
 
     def test_execute_query_text_routes_thesis_to_memory_service_without_runtime(self) -> None:
         with (

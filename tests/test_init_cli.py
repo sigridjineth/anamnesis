@@ -37,8 +37,8 @@ class InitCliTests(unittest.TestCase):
         self.assertTrue((self.root / ".anamnesis" / "generated" / "register-codex-mcp.sh").exists())
         self.assertTrue((self.root / ".opencode" / "opencode.json").exists())
         self.assertTrue((self.root / ".opencode" / "plugins" / "anamnesis.ts").exists())
-        self.assertTrue((self.root / ".claude" / "skills" / "orient" / "SKILL.md").exists())
-        self.assertTrue((self.root / ".agents" / "skills" / "story" / "SKILL.md").exists())
+        self.assertTrue((self.root / ".claude" / "skills" / "survey" / "SKILL.md").exists())
+        self.assertTrue((self.root / ".agents" / "skills" / "chronicle" / "SKILL.md").exists())
 
         mcp = json.loads((self.root / ".mcp.json").read_text(encoding="utf-8"))
         self.assertEqual(mcp["mcpServers"]["anamnesis"]["command"], "/usr/bin/python3")
@@ -57,7 +57,7 @@ class InitCliTests(unittest.TestCase):
 
         opencode_plugin = (self.root / ".opencode" / "plugins" / "anamnesis.ts").read_text(encoding="utf-8")
         self.assertIn("anamnesis.hooks.opencode", opencode_plugin)
-        orient_skill = (self.root / ".claude" / "skills" / "orient" / "SKILL.md").read_text(encoding="utf-8")
+        orient_skill = (self.root / ".claude" / "skills" / "survey" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("memory_orient()", orient_skill)
 
     def test_init_merges_existing_json(self) -> None:

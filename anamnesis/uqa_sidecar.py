@@ -19,19 +19,6 @@ from .local_imports import import_uqa_engine
 
 EMBEDDING_DIMENSIONS = 64
 
-LEGACY_PRESETS = [
-    "orient",
-    "digest",
-    "file",
-    "story",
-    "sprints",
-    "genealogy",
-    "bridges",
-    "delegation-tree",
-    "decision",
-    "health",
-]
-
 PUBLIC_MACROS = [
     "survey",
     "synopsis",
@@ -253,7 +240,6 @@ class UQASidecar:
             "graph": self._graph_counts(),
             "vectors": self._vector_count(),
             "uqa": self.status(),
-            "presets": list(LEGACY_PRESETS),
             "macros": list(PUBLIC_MACROS),
             "operations": [
                 "search",

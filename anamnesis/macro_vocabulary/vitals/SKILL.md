@@ -1,5 +1,5 @@
 ---
-name: health
+name: vitals
 description: Inspect ingestion freshness, sidecar coverage, and UQA health.
 ---
 

@@ -26,7 +26,7 @@ PUBLIC_PRESET_TO_RUNTIME: dict[str, str] = {
     "@relay": "@delegation-tree",
     "@vitals": "@health",
 }
-BUILTIN_PRESET_NAMES: frozenset[str] = frozenset({"@thesis"})
+BUILTIN_PRESET_NAMES: frozenset[str] = frozenset({"@survey", "@synopsis", "@artifact", "@chronicle", "@cadence", "@lineage", "@crossroads", "@relay", "@thesis", "@vitals"})
 LEGACY_PRESET_ALIASES: dict[str, str] = {
     **{runtime: public for public, runtime in PUBLIC_PRESET_TO_RUNTIME.items()},
     "@decision": "@thesis",
@@ -215,16 +215,96 @@ def _execute_builtin_macro_text(
     if preset not in BUILTIN_PRESET_NAMES:
         return None
 
-    topic = args.get("query") or args.get("concept") or args.get("topic") or " ".join(positional).strip()
-    if not topic:
-        raise ValueError("@thesis requires query=<text> or a positional topic")
+    service = MemoryService(settings=settings)
+    resolved_db_path = _service_db_path(db_path)
+    project_id = args.get("project_id")
 
-    result = MemoryService(settings=settings).trace_decision(
-        topic,
-        db_path=_service_db_path(db_path),
-        limit=_int_arg(args, "limit", 10),
-        project_id=args.get("project_id"),
-    )
+    if preset == "@survey":
+        result = service.orient(db_path=resolved_db_path, project_id=project_id)
+    elif preset == "@synopsis":
+        result = service.digest(
+            days=_int_arg(args, "days", 7),
+            db_path=resolved_db_path,
+            project_id=project_id,
+        )
+    elif preset == "@artifact":
+        path = args.get("path") or args.get("file") or args.get("target") or " ".join(positional).strip()
+        if not path:
+            raise ValueError("@artifact requires path=<file> or a positional file path")
+        result = service.trace_file(
+            path,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 20),
+            project_id=project_id,
+        )
+    elif preset == "@chronicle":
+        session_id = args.get("session") or args.get("session_id")
+        topic = args.get("query") or args.get("topic") or " ".join(positional).strip() or None
+        result = service.story(
+            session_id=session_id,
+            query=topic,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 50),
+            project_id=project_id,
+        )
+    elif preset == "@cadence":
+        result = service.sprints(
+            days=_int_arg(args, "days", 14),
+            db_path=resolved_db_path,
+            project_id=project_id,
+            gap_hours=_int_arg(args, "gap_hours", 4),
+        )
+    elif preset == "@lineage":
+        topic = args.get("query") or args.get("concept") or args.get("topic") or " ".join(positional).strip()
+        if not topic:
+            raise ValueError("@lineage requires query=<text> or a positional concept")
+        result = service.genealogy(
+            topic,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 20),
+            project_id=project_id,
+        )
+    elif preset == "@crossroads":
+        query_a = args.get("query_a") or args.get("a")
+        query_b = args.get("query_b") or args.get("b")
+        if not query_a and positional:
+            query_a = positional[0]
+        if not query_b and len(positional) > 1:
+            query_b = positional[1]
+        if not query_a:
+            raise ValueError("@crossroads requires query_a=<text> or a positional primary query")
+        result = service.bridges(
+            query_a,
+            query_b,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 10),
+            project_id=project_id,
+        )
+    elif preset == "@relay":
+        session_id = args.get("session") or args.get("session_id")
+        topic = args.get("query") or args.get("topic") or " ".join(positional).strip() or None
+        result = service.delegation_tree(
+            session_id=session_id,
+            query=topic,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 50),
+            project_id=project_id,
+        )
+    elif preset == "@thesis":
+        topic = args.get("query") or args.get("concept") or args.get("topic") or " ".join(positional).strip()
+        if not topic:
+            raise ValueError("@thesis requires query=<text> or a positional topic")
+        result = service.trace_decision(
+            topic,
+            db_path=resolved_db_path,
+            limit=_int_arg(args, "limit", 10),
+            project_id=project_id,
+        )
+    elif preset == "@vitals":
+        result = service.health(db_path=resolved_db_path)
+    else:  # pragma: no cover
+        return None
+
     return json.dumps(result, indent=2, default=str)
 
 

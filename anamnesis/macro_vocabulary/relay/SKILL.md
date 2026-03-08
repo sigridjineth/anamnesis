@@ -1,5 +1,5 @@
 ---
-name: delegation-tree
+name: relay
 description: Show tool runs and delegated child sessions for a session or concept.
 argument-hint: [session id or query]
 ---

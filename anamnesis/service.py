@@ -14,17 +14,20 @@ class MemoryService:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings.from_env()
 
-    def health(self) -> dict[str, Any]:
-        raw_store = RawMemoryStore(self.settings.raw_db_path)
+    def health(self, *, db_path: str | None = None) -> dict[str, Any]:
+        raw_db = Path(db_path).resolve() if db_path else self.settings.raw_db_path
+        sidecar_path = self._sidecar_path_for(raw_db)
+        raw_store = RawMemoryStore(raw_db)
         raw_store.initialize()
         sidecar = UQASidecar(
-            self.settings.raw_db_path,
-            self.settings.uqa_sidecar_path,
+            raw_db,
+            sidecar_path,
             repo_root=self.settings.uqa_repo_root,
         )
         return {
             "workspace_root": str(self.settings.workspace_root),
-            "raw_db_path": str(self.settings.raw_db_path),
+            "raw_db_path": str(raw_db),
+            "uqa_sidecar_path": str(sidecar_path),
             "uqa_repo_root": str(self.settings.uqa_repo_root) if self.settings.uqa_repo_root else None,
             "mode": "uqa-mandatory",
             "uqa": sidecar.health(),

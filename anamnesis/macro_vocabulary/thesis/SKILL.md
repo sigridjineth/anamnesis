@@ -1,5 +1,5 @@
 ---
-name: decision
+name: thesis
 description: Search for the origin of a decision or implementation choice.
 argument-hint: [query]
 ---

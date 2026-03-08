@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CLIENTS = ("claude", "codex", "opencode")
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-SKILLS_SRC_ROOT = PACKAGE_ROOT / "skills-src"
+PACKAGE_ROOT = Path(__file__).resolve().parent
+MACRO_VOCABULARY_ROOT = PACKAGE_ROOT / "macro_vocabulary"
 
 
 def _json_text(data: Any) -> str:
@@ -260,7 +260,7 @@ export default definePlugin({{
         }
 
     def _install_skills(self) -> dict[str, str]:
-        if not SKILLS_SRC_ROOT.exists():
+        if not MACRO_VOCABULARY_ROOT.exists():
             return {}
         files: dict[str, str] = {}
         destinations: list[Path] = []
@@ -269,7 +269,7 @@ export default definePlugin({{
         if any(client in self.config.clients for client in ("codex", "opencode")):
             destinations.append(self.config.workspace_root / ".agents" / "skills")
         for destination in destinations:
-            for skill_dir in sorted(SKILLS_SRC_ROOT.iterdir()):
+            for skill_dir in sorted(MACRO_VOCABULARY_ROOT.iterdir()):
                 if not skill_dir.is_dir():
                     continue
                 source = skill_dir / "SKILL.md"

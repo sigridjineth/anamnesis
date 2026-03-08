@@ -1,5 +1,5 @@
 ---
-name: bridges
+name: crossroads
 description: Find bridge files or shared sessions connecting concepts.
 argument-hint: [query_a] [query_b optional]
 ---

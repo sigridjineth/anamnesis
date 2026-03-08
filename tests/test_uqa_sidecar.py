@@ -118,8 +118,9 @@ class UQASidecarTests(unittest.TestCase):
         self.assertEqual(orient["counts"]["files"], 3)
         self.assertGreater(orient["vectors"], 0)
         self.assertGreater(orient["graph"]["vertices"], 0)
-        self.assertIn("story", orient["presets"])
-        self.assertIn("genealogy", orient["presets"])
+        self.assertNotIn("presets", orient)
+        self.assertIn("chronicle", orient["macros"])
+        self.assertIn("lineage", orient["macros"])
 
     def test_search_trace_file_trace_decision_and_digest_use_sidecar(self) -> None:
         self.sidecar.rebuild()
