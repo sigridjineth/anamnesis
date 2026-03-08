@@ -13,28 +13,28 @@ from pathlib import Path
 import numpy as np
 
 
-GETFLEX_VERSION = os.environ.get("ANAMNESIS_GETFLEX_VERSION", "0.5.0")
-GETFLEX_WHEEL_URL = os.environ.get(
-    "ANAMNESIS_GETFLEX_WHEEL_URL",
-    f"https://github.com/damiandelmas/flex/releases/download/v{GETFLEX_VERSION}/getflex-{GETFLEX_VERSION}-py3-none-any.whl",
+PRESET_RUNTIME_VERSION = os.environ.get("ANAMNESIS_PRESET_RUNTIME_VERSION", "0.5.0")
+PRESET_RUNTIME_WHEEL_URL = os.environ.get(
+    "ANAMNESIS_PRESET_RUNTIME_WHEEL_URL",
+    f"https://github.com/damiandelmas/flex/releases/download/v{PRESET_RUNTIME_VERSION}/getflex-{PRESET_RUNTIME_VERSION}-py3-none-any.whl",
 )
 
 
 @dataclass(slots=True)
-class GetFlexRuntime:
+class PresetRuntime:
     workspace_root: Path
 
     @property
     def runtime_root(self) -> Path:
-        return self.workspace_root / ".anamnesis" / "getflex" / GETFLEX_VERSION
+        return self.workspace_root / ".anamnesis" / "runtime" / PRESET_RUNTIME_VERSION
 
     @property
     def venv_dir(self) -> Path:
         return self.runtime_root / "venv"
 
     @property
-    def flex_home(self) -> Path:
-        return self.workspace_root / ".flex"
+    def runtime_home(self) -> Path:
+        return self.workspace_root / ".anamnesis" / "runtime-home"
 
     @property
     def python_bin(self) -> Path:
@@ -45,7 +45,7 @@ class GetFlexRuntime:
     def ensure_installed(self) -> Path:
         uv = shutil.which("uv")
         if not uv:
-            raise RuntimeError("uv is required to bootstrap the managed getflex runtime")
+            raise RuntimeError("uv is required to bootstrap the managed preset runtime")
 
         self.runtime_root.mkdir(parents=True, exist_ok=True)
         if not self.python_bin.exists():
@@ -63,7 +63,7 @@ class GetFlexRuntime:
                     "install",
                     "--python",
                     str(self.python_bin),
-                    GETFLEX_WHEEL_URL,
+                    PRESET_RUNTIME_WHEEL_URL,
                     "mcp>=1.0.0",
                 ],
                 env=self._base_env(),
@@ -78,7 +78,7 @@ class GetFlexRuntime:
                 env=self._base_env(),
                 check=False,
             )
-            if result.returncode != 0 or result.stdout.strip() != GETFLEX_VERSION:
+            if result.returncode != 0 or result.stdout.strip() != PRESET_RUNTIME_VERSION:
                 self._run(
                     [
                         uv,
@@ -86,7 +86,7 @@ class GetFlexRuntime:
                         "install",
                         "--python",
                         str(self.python_bin),
-                        GETFLEX_WHEEL_URL,
+                        PRESET_RUNTIME_WHEEL_URL,
                         "mcp>=1.0.0",
                     ],
                     env=self._base_env(),
@@ -135,7 +135,7 @@ class GetFlexRuntime:
         if not texts:
             return []
 
-        with tempfile.TemporaryDirectory(prefix="anamnesis-flex-embed-") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="anamnesis-runtime-embed-") as tmpdir:
             input_path = Path(tmpdir) / "texts.json"
             output_path = Path(tmpdir) / "vectors.npy"
             input_path.write_text(
@@ -292,7 +292,7 @@ class GetFlexRuntime:
 
     def _base_env(self) -> dict[str, str]:
         env = os.environ.copy()
-        env["FLEX_HOME"] = str(self.flex_home)
+        env["FLEX_HOME"] = str(self.runtime_home)
         env.setdefault("PYTHONUNBUFFERED", "1")
         return env
 

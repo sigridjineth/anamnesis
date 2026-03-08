@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from anamnesis.config import Settings
-from anamnesis.flex_projection import FlexCellProjector
 from anamnesis.models import CanonicalEvent
+from anamnesis.projected_cells import ProjectedCellProjector
 from anamnesis.storage import RawMemoryStore
 from anamnesis.uqa_sidecar import UQASidecar
 
@@ -16,7 +16,7 @@ from anamnesis.uqa_sidecar import UQASidecar
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-class FlexProjectionTests(unittest.TestCase):
+class ProjectedCellTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
@@ -86,16 +86,16 @@ class FlexProjectionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def test_rebuild_creates_flex_cell_with_expected_tables_and_rows(self) -> None:
-        projector = FlexCellProjector(self.settings, self.raw_db, self.sidecar_db)
+    def test_rebuild_creates_projected_cell_with_expected_tables_and_rows(self) -> None:
+        projector = ProjectedCellProjector(self.settings, self.raw_db, self.sidecar_db)
         with (
-            patch("anamnesis.getflex_runtime.GetFlexRuntime.encode_texts", side_effect=lambda texts, **_: [b"\x00" * (128 * 4) for _ in texts]),
-            patch("anamnesis.getflex_runtime.GetFlexRuntime.register_and_install_assets"),
-            patch("anamnesis.getflex_runtime.GetFlexRuntime.run_claude_code_enrichment", return_value={"failures": []}),
+            patch("anamnesis.preset_runtime.PresetRuntime.encode_texts", side_effect=lambda texts, **_: [b"\x00" * (128 * 4) for _ in texts]),
+            patch("anamnesis.preset_runtime.PresetRuntime.register_and_install_assets"),
+            patch("anamnesis.preset_runtime.PresetRuntime.run_claude_code_enrichment", return_value={"failures": []}),
         ):
             result = projector.rebuild()
 
-        self.assertEqual(result["backend"], "uqa->flex-projection")
+        self.assertEqual(result["backend"], "uqa->anamnesis-projection")
         self.assertTrue(projector.cell_path.exists())
 
         db = sqlite3.connect(projector.cell_path)

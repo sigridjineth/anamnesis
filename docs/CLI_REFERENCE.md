@@ -17,6 +17,45 @@ make mcp
 make mcp-http HOST=0.0.0.0 PORT=8000
 ```
 
+## `anamnesis`
+
+Umbrella CLI for searching, syncing, bootstrapping, and serving MCP.
+
+```bash
+uv run anamnesis --help
+uv run anamnesis search "@survey"
+uv run anamnesis search "@artifact path=src/worker.py"
+uv run anamnesis search "@chronicle session=ses-1"
+uv run anamnesis search "SELECT COUNT(*) AS n FROM sessions"
+uv run anamnesis sync
+uv run anamnesis init -- --workspace-root "$PWD"
+uv run anamnesis mcp -- --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Supported subcommands:
+
+- `anamnesis search`
+- `anamnesis sync`
+- `anamnesis init`
+- `anamnesis mcp`
+
+## Anamnesis macros
+
+The public macro vocabulary is:
+
+- `@survey` — schema and coverage overview
+- `@synopsis` — recent activity digest
+- `@artifact` — file trace / lineage workflow
+- `@chronicle` — session narrative reconstruction
+- `@cadence` — sprint grouping
+- `@lineage` — concept genealogy across sessions/files/tools
+- `@crossroads` — shared files or bridge sessions between concepts
+- `@relay` — delegation tree / child-session trace
+- `@thesis` — decision archaeology
+- `@vitals` — health and freshness checks
+
+Legacy runtime-era macro names such as `@story`, `@file`, or `@decision` are rejected with a replacement hint so callers move onto the Anamnesis vocabulary.
+
 ## `anamnesis-init`
 
 Write deployable client config for Claude Code, Codex, and OpenCode.
@@ -65,31 +104,13 @@ uv run anamnesis-opencode-sync \
 
 ## `anamnesis-mcp`
 
-Run the MCP server.
+Run the MCP server directly.
 
 ```bash
 uv run anamnesis-mcp
 uv run anamnesis-mcp --transport sse
 uv run anamnesis-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
-
-## `flex`
-
-Flex-compatible CLI facade over the Anamnesis/UQA query surface.
-
-```bash
-uv run flex search "@orient"
-uv run flex search "@digest days=7"
-uv run flex search "@file path=src/worker.py"
-uv run flex search "@story session=ses-1"
-uv run flex search "SELECT COUNT(*) AS n FROM sessions"
-```
-
-Supported subcommands:
-
-- `flex search`
-- `flex init`
-- `flex mcp`
 
 ## Hook entrypoints
 

@@ -19,6 +19,32 @@ from .local_imports import import_uqa_engine
 
 EMBEDDING_DIMENSIONS = 64
 
+LEGACY_PRESETS = [
+    "orient",
+    "digest",
+    "file",
+    "story",
+    "sprints",
+    "genealogy",
+    "bridges",
+    "delegation-tree",
+    "decision",
+    "health",
+]
+
+PUBLIC_MACROS = [
+    "survey",
+    "synopsis",
+    "artifact",
+    "chronicle",
+    "cadence",
+    "lineage",
+    "crossroads",
+    "relay",
+    "thesis",
+    "vitals",
+]
+
 
 @dataclass(slots=True)
 class UQABridgeStatus:
@@ -227,18 +253,19 @@ class UQASidecar:
             "graph": self._graph_counts(),
             "vectors": self._vector_count(),
             "uqa": self.status(),
-            "presets": [
-                "orient",
+            "presets": list(LEGACY_PRESETS),
+            "macros": list(PUBLIC_MACROS),
+            "operations": [
                 "search",
                 "file_search",
                 "trace_file",
                 "trace_decision",
-                "digest",
                 "story",
                 "sprints",
                 "genealogy",
                 "bridges",
                 "delegation_tree",
+                "digest",
                 "health",
                 "sql",
             ],

@@ -18,7 +18,7 @@ from anamnesis.mcp_server import create_server
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 EXPECTED_SCRIPTS = {
-    "flex": "anamnesis.flex_compat:main",
+    "anamnesis": "anamnesis.cli:main",
     "anamnesis-init": "anamnesis.init_cli:main",
     "anamnesis-mcp": "anamnesis.mcp_server:main",
     "anamnesis-ingest": "anamnesis.ingest:main",
@@ -56,7 +56,7 @@ class DeployabilityTests(unittest.TestCase):
 
     def test_cli_modules_expose_help(self) -> None:
         commands = [
-            (["-m", "anamnesis.flex_compat", "--help"], "Your AI sessions, searchable forever."),
+            (["-m", "anamnesis", "--help"], "Anamnesis — searchable shared memory for Claude, Codex, and OpenCode."),
             (["-m", "anamnesis.init_cli", "--help"], "Write deployable Claude/Codex/OpenCode configuration for Anamnesis"),
             (["-m", "anamnesis.ingest", "--help"], "Normalize agent hook payloads"),
             (["-m", "anamnesis.codex_sync", "--help"], "Backfill Codex history"),

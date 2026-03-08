@@ -13,11 +13,11 @@ from typing import Any
 
 from anamnesis.config import Settings
 from anamnesis.embeddings import combine_text
-from anamnesis.getflex_runtime import GetFlexRuntime
+from anamnesis.preset_runtime import PresetRuntime
 from anamnesis.uqa_sidecar import UQASidecar
 
 
-FLEX_VECTOR_DIMENSIONS = 128
+RUNTIME_VECTOR_DIMENSIONS = 128
 WARMUP_THRESHOLD = 5
 URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 
@@ -196,7 +196,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS content_fts USING fts5(content, content='_raw
 
 
 @dataclass(slots=True)
-class FlexCellProjector:
+class ProjectedCellProjector:
     settings: Settings
     raw_db_path: Path
     sidecar_path: Path
@@ -204,7 +204,7 @@ class FlexCellProjector:
 
     @property
     def cell_path(self) -> Path:
-        return self.settings.workspace_root / ".flex" / "cells" / f"{self.cell_name}.db"
+        return self.settings.workspace_root / ".anamnesis" / "cells" / f"{self.cell_name}.db"
 
     def ensure_ready(self) -> Path:
         if self._is_stale():
@@ -260,7 +260,7 @@ class FlexCellProjector:
             out_db.commit()
 
         tmp.replace(self.cell_path)
-        runtime = GetFlexRuntime(self.settings.workspace_root)
+        runtime = PresetRuntime(self.settings.workspace_root)
         runtime.register_and_install_assets(
             cell_name=self.cell_name,
             db_path=self.cell_path,
@@ -277,7 +277,7 @@ class FlexCellProjector:
             "aliases": len(aliases),
             "links": len(links),
             "search_docs": len(search_docs),
-            "backend": "uqa->flex-projection",
+            "backend": "uqa->anamnesis-projection",
             "enrichment": enrichment,
         }
 
@@ -297,7 +297,7 @@ class FlexCellProjector:
         description = "Anamnesis projected claude_code cell (UQA-backed)"
         retrieval = {
             "retrieval:backend": "uqa",
-            "retrieval:projection": "flex-compatible",
+            "retrieval:projection": "anamnesis-projected",
         }
         db.execute("INSERT OR REPLACE INTO _meta(key, value) VALUES (?, ?)", ("description", description))
         for key, value in retrieval.items():
@@ -309,7 +309,7 @@ class FlexCellProjector:
                 self.cell_name,
                 json.dumps({"sessions": len(sessions), "events": len(events), "files": len(files)}),
                 len(events),
-                "anamnesis.flex_projection",
+                "anamnesis.projected_cells",
             ),
         )
 
@@ -739,11 +739,11 @@ class FlexCellProjector:
         )
 
     def _materialize_embeddings(self, db: sqlite3.Connection) -> None:
-        runtime = GetFlexRuntime(self.settings.workspace_root)
+        runtime = PresetRuntime(self.settings.workspace_root)
 
         chunk_rows = db.execute("SELECT id, content FROM _raw_chunks ORDER BY timestamp ASC, id ASC").fetchall()
         if chunk_rows:
-            vectors = runtime.encode_texts([str(row["content"] or "") for row in chunk_rows], matryoshka_dim=FLEX_VECTOR_DIMENSIONS)
+            vectors = runtime.encode_texts([str(row["content"] or "") for row in chunk_rows], matryoshka_dim=RUNTIME_VECTOR_DIMENSIONS)
             db.executemany(
                 "UPDATE _raw_chunks SET embedding = ? WHERE id = ?",
                 [(sqlite3.Binary(vector), row["id"]) for row, vector in zip(chunk_rows, vectors, strict=True)],
@@ -757,7 +757,7 @@ class FlexCellProjector:
                 combine_text([row["title"], row["summary"]])
                 for row in source_rows
             ]
-            vectors = runtime.encode_texts(source_texts, matryoshka_dim=FLEX_VECTOR_DIMENSIONS)
+            vectors = runtime.encode_texts(source_texts, matryoshka_dim=RUNTIME_VECTOR_DIMENSIONS)
             db.executemany(
                 "UPDATE _raw_sources SET embedding = ? WHERE source_id = ?",
                 [(sqlite3.Binary(vector), row["source_id"]) for row, vector in zip(source_rows, vectors, strict=True)],

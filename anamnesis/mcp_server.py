@@ -129,14 +129,14 @@ def create_server(config: MCPServerConfig | None = None):
         return _json(service.health())
 
     @mcp.tool()
-    def flex_search(
+    def anamnesis_search(
         query: str,
         cell: str = "claude_code",
         params: dict[str, Any] | None = None,
     ) -> str:
-        from anamnesis.flex_compat import execute_flex_mcp_text
+        from anamnesis.cli import execute_mcp_query_text
 
-        return execute_flex_mcp_text(query, cell=cell, params=params)
+        return execute_mcp_query_text(query, cell=cell, params=params)
 
     @mcp.tool()
     def memory_orient(db_path: str | None = None, project_id: str | None = None) -> str:

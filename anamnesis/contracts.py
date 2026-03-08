@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-from anamnesis.models import CanonicalEvent
-
 AgentKind = Literal["claude", "codex", "opencode"]
 BackendKind = Literal["uqa"]
 EventKind = Literal[

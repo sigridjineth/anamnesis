@@ -39,7 +39,7 @@ class MemoryServiceTests(unittest.TestCase):
     def test_sql_rejects_non_uqa_backend(self) -> None:
         service = MemoryService(self.settings)
         with self.assertRaisesRegex(ValueError, "UQA-only"):
-            service.sql("SELECT 1", backend="flex")
+            service.sql("SELECT 1", backend="legacy")
 
     def test_ingest_rebuilds_uqa_sidecar(self) -> None:
         service = MemoryService(self.settings)

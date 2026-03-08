@@ -2,23 +2,23 @@
 
 **Anamnesis** is a **UQA-native shared memory layer** for **Claude Code**, **Codex**, and **OpenCode**.
 
-It captures agent activity into a canonical SQLite raw store, materializes a mandatory **UQA** sidecar, and serves one shared query surface across clients.
+It captures agent activity into a canonical SQLite raw store, rebuilds a mandatory **UQA** sidecar, and exposes one shared query surface across clients.
 
-> Core stance: **UQA is required**. There is no supported non-UQA query mode.
+> Core stance: **UQA is required.** There is no supported non-UQA query mode.
 
 ## What it gives you
 
 - shared search across Claude Code, Codex, and OpenCode history
 - repo-scoped/project-scoped memory separation
-- file history, lineage, story, genealogy, delegation, and digest workflows
-- Flex-compatible query entrypoints such as `flex search`, `@orient`, `@file`, and `@story`
-- MCP + Python access to the same UQA-backed memory surface
+- file history, lineage, chronology, delegation, and digest workflows
+- one MCP + Python + CLI surface over the same UQA-backed memory
+- Anamnesis macros such as `@survey`, `@artifact`, `@chronicle`, and `@synopsis`
 
 ## Architecture
 
 ```text
 Claude hooks   ─┐
-Codex hooks    ─┼─> adapters -> raw SQLite -> UQA sidecar -> MCP / Python / flex facade
+Codex hooks    ─┼─> adapters -> raw SQLite -> UQA sidecar -> MCP / Python / Anamnesis CLI
 OpenCode hooks ─┘
 ```
 
@@ -61,22 +61,20 @@ service = MemoryService()
 print(service.search("install script"))
 ```
 
-Or run the MCP server:
+Run the MCP server:
 
 ```bash
 make mcp
 make mcp-http HOST=0.0.0.0 PORT=8000
 ```
 
-Or use the Flex-compatible CLI surface:
+Query through the umbrella CLI:
 
 ```bash
-uv run flex search "@orient"
-uv run flex search "@file path=src/worker.py"
-uv run flex search "@story session=ses-1"
-# or use the simplified wrappers for setup/build/test:
-make build
-make test
+uv run anamnesis search "@survey"
+uv run anamnesis search "@artifact path=src/worker.py"
+uv run anamnesis search "@chronicle session=ses-1"
+uv run anamnesis search "@synopsis days=7"
 ```
 
 More: [Quickstart](docs/QUICKSTART.md)
@@ -93,7 +91,7 @@ Start here:
 - [Data model](docs/DATA_MODEL.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [uv release workflow](docs/RELEASE_UV.md)
-- [Flex parity and scope](docs/FLEX_PARITY.md)
+- [Feature coverage](docs/FEATURE_COVERAGE.md)
 
 ## Verification
 
@@ -116,4 +114,4 @@ uv run python scripts/verify_uv_release.py
 
 ## Bottom line
 
-If you want one **UQA-backed agent memory/query surface** across Claude Code, Codex, and OpenCode, that is what Anamnesis is building.
+If you want one **UQA-backed agent memory/query surface** across Claude Code, Codex, and OpenCode, that is what Anamnesis provides.

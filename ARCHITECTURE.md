@@ -21,7 +21,7 @@ client hooks / exports
     -> adapter normalization
     -> canonical raw SQLite
     -> UQA sidecar rebuild
-    -> MCP + Python API
+    -> MCP + Python API + Anamnesis CLI
 ```
 
 ---
@@ -53,7 +53,7 @@ Tables:
 
 The sidecar is rebuilt from the raw store and is the supported query engine.
 
-It currently materializes:
+It materializes:
 
 - `projects`
 - `sessions`
@@ -77,9 +77,6 @@ It currently materializes:
 
 ## Why UQA is mandatory
 
-The repo used to tolerate fallback-oriented wording.
-That is no longer the intended contract.
-
 Current contract:
 
 - raw storage may exist without an already-built sidecar
@@ -89,10 +86,10 @@ Current contract:
 
 ---
 
-## Intentional differences
+## Design choices
 
-This architecture deliberately differs from Flex in a few ways:
+Anamnesis intentionally:
 
-- it centers UQA sidecar projection rather than Flex’s compile/daemon model
-- it keeps the raw store simple and rebuildable instead of reproducing Flex’s full table/module convention stack
-- it focuses on local query ergonomics over a service-heavy runtime package
+- centers UQA sidecar projection as the query core
+- keeps the raw store simple and rebuildable
+- favors local query ergonomics over service-heavy packaging

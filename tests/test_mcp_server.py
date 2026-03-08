@@ -146,7 +146,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(
             sorted(instance.registered_tools),
             [
-                "flex_search",
+                "anamnesis_search",
                 "memory_bridges",
                 "memory_delegation_tree",
                 "memory_digest",
@@ -184,22 +184,22 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(story["project_id"], "/repo/app")
         self.assertEqual(digest["project_id"], "/repo/app")
 
-    def test_flex_search_tool_routes_query_cell_and_params(self) -> None:
+    def test_anamnesis_search_tool_routes_query_cell_and_params(self) -> None:
         with (
             patch.dict(sys.modules, _fake_fastmcp_modules()),
             patch.object(mcp_server, "MemoryService", DummyService),
-            patch("anamnesis.flex_compat.execute_flex_mcp_text", return_value="[1 rows, ~1 tok]\n[]") as execute_flex_mcp_text,
+            patch("anamnesis.cli.execute_mcp_query_text", return_value="[1 rows, ~1 tok]\n[]") as execute_mcp_query_text,
         ):
             mcp_server.create_server()
             [instance] = FakeFastMCP.instances
-            result = instance.tool_fns["flex_search"](
-                "@story",
+            result = instance.tool_fns["anamnesis_search"](
+                "@chronicle",
                 cell="claude_code",
                 params={"session": "ses-1"},
             )
             self.assertEqual(result, "[1 rows, ~1 tok]\n[]")
-            execute_flex_mcp_text.assert_called_once_with(
-                "@story",
+            execute_mcp_query_text.assert_called_once_with(
+                "@chronicle",
                 cell="claude_code",
                 params={"session": "ses-1"},
             )

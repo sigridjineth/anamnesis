@@ -6,13 +6,13 @@ Use this folder as the expanded reference for Anamnesis.
 
 - [Quickstart](QUICKSTART.md) — fastest path from clone to ingest + query
 - [Client setup](CLIENT_SETUP.md) — generated config and backfill flows for Claude Code, Codex, and OpenCode
-- [CLI reference](CLI_REFERENCE.md) — every shipped command and hook entrypoint
+- [CLI reference](CLI_REFERENCE.md) — shipped commands, macros, and hook entrypoints
 
 ## System internals
 
 - [Architecture](ARCHITECTURE.md) — raw capture, mandatory UQA sidecar, and query contract
 - [Data model](DATA_MODEL.md) — canonical raw schema and projected query tables
-- [Flex parity and scope](FLEX_PARITY.md) — what is functionally compatible with Flex and what is intentionally different
+- [Feature coverage](FEATURE_COVERAGE.md) — current capability surface and workflow coverage
 
 ## Operations
 

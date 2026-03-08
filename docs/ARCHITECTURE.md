@@ -34,7 +34,7 @@ The raw schema is:
 
 The UQA sidecar is rebuilt from the raw store.
 
-Current projection is intentionally richer and includes:
+Current projection includes:
 
 - `projects`
 - `sessions`
@@ -48,11 +48,11 @@ Current projection is intentionally richer and includes:
 
 That supports:
 
-- UQA hybrid lexical + vector search
+- lexical + vector hybrid search
 - sidecar-backed orientation
-- read-only SQL against the projected memory
-- digest / trace / story / genealogy helpers over UQA-readable tables
-- graph-aware session/file/event navigation
+- read-only SQL against projected memory
+- digest / trace / chronicle / lineage helpers over UQA-readable tables
+- graph-aware session / file / event navigation
 
 ---
 
@@ -69,7 +69,7 @@ That includes:
 - `MemoryService.digest`
 - `MemoryService.sql`
 
-There is no supported Flex or generic-SQLite fallback path anymore.
+There is no supported generic-SQLite fallback path.
 
 ---
 
