@@ -73,6 +73,7 @@ class CliSurfaceTests(unittest.TestCase):
 
     def test_translate_query_text_maps_new_public_macros_to_runtime_macros(self) -> None:
         self.assertEqual(translate_query_text("@survey"), PUBLIC_PRESET_TO_RUNTIME["@survey"])
+        self.assertEqual(translate_query_text("@surevy"), PUBLIC_PRESET_TO_RUNTIME["@survey"])
         translated = translate_query_text("!@artifact path=src/worker.py")
         self.assertTrue(translated.startswith(f'!{PUBLIC_PRESET_TO_RUNTIME["@artifact"]}'))
         with self.assertRaisesRegex(ValueError, "Legacy preset"):
@@ -121,6 +122,26 @@ class CliSurfaceTests(unittest.TestCase):
         execute_mcp_query.assert_not_called()
         orient.assert_called_once_with(db_path=str(self.db_path.resolve()), project_id=None)
         self.assertEqual(json.loads(result)["macros"], ["survey"])
+
+    def test_execute_query_text_autocorrects_survey_typo_and_truncates_schema_dump(self) -> None:
+        with patch(
+            "anamnesis.cli.MemoryService.orient",
+            return_value={"backend": "uqa", "objects": [{"name": "events"}], "tables": ["events"], "macros": ["survey"]},
+        ) as orient:
+            result = json.loads(execute_query_text("@surevy", db_path=self.db_path, workspace_root=self.root))
+        orient.assert_called_once_with(db_path=str(self.db_path.resolve()), project_id=None)
+        self.assertEqual(result["objects"], [])
+        self.assertTrue(result["objects_truncated"])
+
+    def test_execute_query_text_rejects_unknown_macro_without_runtime(self) -> None:
+        with (
+            patch("anamnesis.cli.ProjectedCellProjector.ensure_ready") as ensure_ready,
+            patch("anamnesis.preset_runtime.PresetRuntime.execute_cli_query") as execute_cli_query,
+        ):
+            with self.assertRaisesRegex(ValueError, "Unknown Anamnesis macro"):
+                execute_query_text("@totallyunknown", db_path=self.db_path, workspace_root=self.root)
+        ensure_ready.assert_not_called()
+        execute_cli_query.assert_not_called()
 
     def test_execute_query_text_routes_thesis_to_memory_service_without_runtime(self) -> None:
         with (

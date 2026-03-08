@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import shlex
 from pathlib import Path
@@ -32,6 +33,33 @@ LEGACY_PRESET_ALIASES: dict[str, str] = {
     **{runtime: public for public, runtime in PUBLIC_PRESET_TO_RUNTIME.items()},
     "@decision": "@thesis",
 }
+
+
+def _normalize_macro_query(query: str) -> str:
+    stripped = query.strip()
+    if not stripped:
+        return stripped
+    tokens = stripped.split(maxsplit=1)
+    command = tokens[0]
+    remainder = tokens[1] if len(tokens) > 1 else ""
+    normalized_command = _normalize_macro_token(command)
+    if normalized_command == command:
+        return stripped
+    return f"{normalized_command} {remainder}".strip()
+
+
+def _normalize_macro_token(command: str) -> str:
+    bang_prefix = "!" if command.startswith("!") else ""
+    preset = command[1:] if bang_prefix else command
+    normalized = preset.lower()
+    if not normalized.startswith("@"):
+        return command
+    if normalized in BUILTIN_PRESET_NAMES or normalized in LEGACY_PRESET_ALIASES or normalized in PUBLIC_PRESET_TO_RUNTIME:
+        return f"{bang_prefix}{normalized}"
+    suggestion = difflib.get_close_matches(normalized, sorted(BUILTIN_PRESET_NAMES), n=1, cutoff=0.7)
+    if suggestion:
+        return f"{bang_prefix}{suggestion[0]}"
+    return f"{bang_prefix}{normalized}"
 
 
 def workspace_settings(workspace_root: str | Path | None = None) -> Settings:
@@ -130,7 +158,7 @@ def sync_projected_cell(
 
 
 def translate_query_text(query: str) -> str:
-    stripped = query.strip()
+    stripped = _normalize_macro_query(query)
     if not stripped:
         return stripped
     tokens = stripped.split(maxsplit=1)
@@ -178,7 +206,7 @@ def _split_macro_query(query: str) -> tuple[str, dict[str, str], list[str]]:
 
 
 def parse_macro_query(query: str) -> tuple[str, dict[str, str], list[str]]:
-    preset, args, positional = _split_macro_query(query)
+    preset, args, positional = _split_macro_query(_normalize_macro_query(query))
     translated = translate_query_text(preset)
     if translated == preset and preset not in PUBLIC_PRESET_TO_RUNTIME and preset not in BUILTIN_PRESET_NAMES:
         raise ValueError(f"Unknown Anamnesis macro: {preset}")
@@ -195,6 +223,13 @@ def _int_arg(args: dict[str, str], name: str, default: int) -> int:
         raise ValueError(f"@thesis parameter '{name}' must be an integer") from exc
 
 
+def _bool_arg(args: dict[str, str], name: str, default: bool = False) -> bool:
+    raw = args.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on", "full", "schema"}
+
+
 def _service_db_path(db_path: str | Path | None = None) -> str | None:
     if db_path is None:
         return None
@@ -207,10 +242,11 @@ def _execute_builtin_macro_text(
     settings: Settings,
     db_path: str | Path | None = None,
 ) -> str | None:
-    if not query.strip():
+    normalized_query = _normalize_macro_query(query)
+    if not normalized_query.strip():
         return None
     try:
-        preset, args, positional = _split_macro_query(query)
+        preset, args, positional = _split_macro_query(normalized_query)
     except ValueError:
         return None
     if preset not in BUILTIN_PRESET_NAMES:
@@ -222,6 +258,13 @@ def _execute_builtin_macro_text(
 
     if preset == "@survey":
         result = service.orient(db_path=resolved_db_path, project_id=project_id)
+        if not _bool_arg(args, "full") and not _bool_arg(args, "schema") and not _bool_arg(args, "objects"):
+            result = {
+                **result,
+                "objects": [],
+                "objects_truncated": True,
+                "hint": "Use @survey full=1 to include the full schema objects dump.",
+            }
     elif preset == "@synopsis":
         result = service.digest(
             days=_int_arg(args, "days", 7),
@@ -318,10 +361,16 @@ def execute_query_text(
     db_path: str | Path | None = None,
 ) -> str:
     settings = workspace_settings(workspace_root)
-    merged_query = merge_params_into_query(query, params).strip()
+    merged_query = _normalize_macro_query(merge_params_into_query(query, params).strip())
     builtin = _execute_builtin_macro_text(merged_query, settings=settings, db_path=db_path)
     if builtin is not None:
         return builtin
+    if merged_query.lstrip("!").startswith("@"):
+        preset = merged_query.split(maxsplit=1)[0].lstrip("!").lower()
+        raise ValueError(
+            f"Unknown Anamnesis macro: {preset}. "
+            f"Supported macros: {', '.join(sorted(name.removeprefix('@') for name in BUILTIN_PRESET_NAMES))}"
+        )
     _ensure_projected_cell(cell=cell, settings=settings, db_path=db_path)
     runtime = PresetRuntime(settings.workspace_root)
     translated_query = translate_query_text(merged_query)
@@ -337,13 +386,19 @@ def execute_mcp_query_text(
     db_path: str | Path | None = None,
 ) -> str:
     settings = workspace_settings(workspace_root)
-    merged_query = merge_params_into_query(query, params).strip()
+    merged_query = _normalize_macro_query(merge_params_into_query(query, params).strip())
     builtin = _execute_builtin_macro_text(merged_query, settings=settings, db_path=db_path)
     if builtin is not None:
         return builtin
+    if merged_query.lstrip("!").startswith("@"):
+        preset = merged_query.split(maxsplit=1)[0].lstrip("!").lower()
+        raise ValueError(
+            f"Unknown Anamnesis macro: {preset}. "
+            f"Supported macros: {', '.join(sorted(name.removeprefix('@') for name in BUILTIN_PRESET_NAMES))}"
+        )
     _ensure_projected_cell(cell=cell, settings=settings, db_path=db_path)
     runtime = PresetRuntime(settings.workspace_root)
-    translated_query = translate_query_text(query)
+    translated_query = translate_query_text(merged_query)
     return runtime.execute_mcp_query(cell_name=cell, query=translated_query, params=params)
 
 

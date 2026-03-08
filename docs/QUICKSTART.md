@@ -42,6 +42,15 @@ make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
 
 If you run `make bootstrap` again for the same workspace, Anamnesis now reuses the recorded bootstrap state and skips the expensive historical rescan unless you explicitly refresh it.
 
+Quick query helpers from the Anamnesis repo root:
+
+```bash
+make survey WORKSPACE_ROOT=~/Desktop/work/pylon
+make search WORKSPACE_ROOT=~/Desktop/work/pylon QUERY='@artifact path=README.md'
+```
+
+Those helpers automatically unset mismatched `VIRTUAL_ENV` values so you do not get the noisy `uv run` warning when your shell is currently inside another repo's virtualenv.
+
 Then rebuild the mandatory UQA sidecar explicitly when you want full query coverage:
 
 ```bash

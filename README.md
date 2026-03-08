@@ -52,6 +52,7 @@ Or, from inside this repo:
 ```bash
 make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
 make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+make survey WORKSPACE_ROOT=~/Desktop/work/pylon
 ```
 
 Repeated `make bootstrap` runs are cheap: once a workspace has already been backfilled, Anamnesis records that state and skips the historical rescan unless you explicitly request a refresh.
@@ -146,3 +147,11 @@ uv run python scripts/verify_uv_release.py
 ## Bottom line
 
 If you want one **UQA-backed agent memory/query surface** across Claude Code, Codex, and OpenCode, that is what Anamnesis provides.
+Fast local querying helpers from the repo root:
+
+```bash
+make survey WORKSPACE_ROOT=~/Desktop/work/pylon
+make search WORKSPACE_ROOT=~/Desktop/work/pylon QUERY='@artifact path=README.md'
+```
+
+`make survey` and `make search` automatically unset mismatched `VIRTUAL_ENV` values, so they avoid the noisy `uv run` warning you see when querying from inside another repo's virtualenv.

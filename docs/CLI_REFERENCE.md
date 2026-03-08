@@ -12,6 +12,8 @@ make bootstrap WORKSPACE_ROOT=~/Desktop/work/pylon
 make bootstrap-full WORKSPACE_ROOT=~/Desktop/work/pylon
 make bootstrap-fast WORKSPACE_ROOT=~/Desktop/work/pylon
 make sidecar WORKSPACE_ROOT=~/Desktop/work/pylon
+make survey WORKSPACE_ROOT=~/Desktop/work/pylon
+make search WORKSPACE_ROOT=~/Desktop/work/pylon QUERY='@artifact path=README.md'
 make test
 make build
 make verify
@@ -53,7 +55,7 @@ Supported subcommands:
 
 The public macro vocabulary is:
 
-- `@survey` — schema and coverage overview
+- `@survey` — schema and coverage overview (compact by default; use `@survey full=1` for the full objects dump)
 - `@synopsis` — recent activity digest
 - `@artifact` — file trace / lineage workflow
 - `@chronicle` — session narrative reconstruction

@@ -5,7 +5,7 @@ DB_PATH ?= $(WORKSPACE_ROOT)/.anamnesis/anamnesis.db
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-.PHONY: help install sync build test compile verify init bootstrap bootstrap-full bootstrap-fast sidecar smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
+.PHONY: help install sync build test compile verify init bootstrap bootstrap-full bootstrap-fast sidecar survey search smoke-clients mcp mcp-http codex-sync claude-sync opencode-sync clean-dist
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-16s %s\n", $$1, $$2}'
@@ -45,6 +45,12 @@ bootstrap-fast: ## Initialize this workspace and import history without rebuildi
 
 sidecar: ## Rebuild the UQA sidecar for DB_PATH
 	$(UV) run anamnesis sidecar --db "$(DB_PATH)"
+
+survey: ## Fast compact workspace survey against DB_PATH
+	$(UV) run anamnesis search "@survey" --db "$(DB_PATH)"
+
+search: ## Run an Anamnesis query without VIRTUAL_ENV mismatch warnings (pass QUERY=...)
+	$(UV) run anamnesis search "$(QUERY)" --db "$(DB_PATH)"
 
 smoke-clients: ## End-to-end smoke test for Claude Code, Codex, and OpenCode wiring
 	$(UV) run python scripts/smoke_client_connections.py

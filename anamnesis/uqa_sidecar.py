@@ -138,7 +138,11 @@ class UQASidecar:
             if temp_path.exists():
                 temp_path.unlink()
 
-            engine = engine_cls(db_path=str(temp_path), vector_dimensions=EMBEDDING_DIMENSIONS)
+            engine = engine_cls(
+                db_path=str(temp_path),
+                vector_dimensions=EMBEDDING_DIMENSIONS,
+                parallel_workers=0,
+            )
             try:
                 for statement in self._schema_sql():
                     engine.sql(statement)
@@ -153,7 +157,11 @@ class UQASidecar:
                 },
             )
 
-            engine = engine_cls(db_path=str(temp_path), vector_dimensions=EMBEDDING_DIMENSIONS)
+            engine = engine_cls(
+                db_path=str(temp_path),
+                vector_dimensions=EMBEDDING_DIMENSIONS,
+                parallel_workers=0,
+            )
             try:
                 self._insert_rows(engine, "search_docs", model["search_docs"])
                 self._materialize_vectors(engine, model["search_docs"])
@@ -1241,7 +1249,13 @@ class UQASidecar:
     def engine(self):
         engine_cls = self._engine_class()
         self.sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-        return _EngineContext(engine_cls(db_path=str(self.sidecar_path), vector_dimensions=EMBEDDING_DIMENSIONS))
+        return _EngineContext(
+            engine_cls(
+                db_path=str(self.sidecar_path),
+                vector_dimensions=EMBEDDING_DIMENSIONS,
+                parallel_workers=0,
+            )
+        )
 
     def _schema_sql(self) -> tuple[str, ...]:
         return (
